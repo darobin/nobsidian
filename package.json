@@ -28,5 +28,9 @@
   },
   "devDependencies": {
     "eslint": "^8.26.0"
+  },
+  "dependencies": {
+    "keytar": "^7.9.0",
+    "notion-client": "^6.16.0"
   }
 }
