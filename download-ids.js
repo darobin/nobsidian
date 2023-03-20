@@ -24,8 +24,27 @@ const ids = await loadJSON(needFile);
 
 let cnt = 0;
 for (const id of ids) {
+  const outFile = join(nodesDir, `${id}.json`);
+  if (await exists(outFile)) continue;
   cnt++;
   console.warn(`• [${cnt}] ${id}`);
   const data = await nc.getPage(id);
-  saveJSON(join(nodesDir, `${id}.json`), data);
+  await sleep(1000);
+  saveJSON(outFile, data);
+}
+
+async function sleep (ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+async function exists (path) {
+  try {
+    const data = loadJSON(path);
+    return !!Object.keys(data).length;
+  }
+  catch (err) {
+    return false;
+  }
 }

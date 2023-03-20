@@ -32,5 +32,3 @@ async function walk (dir) {
  }
   return ret;
 }
-
-// 67ac8b79ff8149eebda2787a82d2a9ba
