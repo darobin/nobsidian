@@ -19,14 +19,15 @@ const need = new Set();
     need.add(id);
   })
 ;
-await saveJSON(idsFile, need);
+
+await saveJSON(idsFile, [...need]);
 
 async function walk (dir) {
   const entries = await readdir(dir);
   let ret = [];
   for (const entry of entries) {
     const path = resolve(dir, entry);
-    const isDir = await stat(path);
+    const isDir = (await stat(path)).isDirectory();
     ret = [...ret, ...(isDir ? (await walk(path)) : [entry])];
  }
   return ret;
