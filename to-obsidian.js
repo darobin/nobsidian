@@ -47,6 +47,9 @@ async function generateObsidian (id, node) {
       .filter(Boolean)
   );
 
+  // XXX
+  // extract all the interesting features from all files so that we can index things and test that we have it right
+
   // - make file name
 }
 
@@ -55,54 +58,63 @@ function notionToPlainText (no, node) {
     .map(it => {
       if (it.length === 1) return it[0];
       const [txt, meta] = it;
+      // XXX
+      // - check that all the meta are understood, but the formatting ones all just return plain text anyway
+      // - for the other ones, generate what can be (link or math)
+      // - systematically report on what couldn't be matched
       if (meta.find(m => m[0] === 'm')) return txt; // just return the text for commented stuff
     })
     .join('')
   ;
 }
 
+// XXX TODO
+//  - [ ] we can work entirely in bigIndex!
+//  - [ ] keep in mind that blocks can have both title AND content
+//  - [ ] comments need to potentially have reactions? they also need to be resolved. Is there a comments plugin that we would work with?
 
-[
-  [
-    "The same idea is also brought up in "
-  ],
-  [
-    "‣",
-    [
-      [
-        "p",
-        "b9afc468-4854-4888-b94d-961d802add16",
-        "fb3fbef6-0b34-462f-b235-627e17f7d72d"
-      ]
-    ]
-  ],
-  [
-    " when "
-  ],
-  [
-    "‣",
-    [
-      [
-        "p",
-        "e81f2af0-7675-4d44-9c8e-53e2fc772efc",
-        "fb3fbef6-0b34-462f-b235-627e17f7d72d"
-      ]
-    ]
-  ],
-  [
-    " describes "
-  ],
-  [
-    "‣",
-    [
-      [
-        "p",
-        "ffd56561-6677-4b3f-9a53-f0d879bdd9e2",
-        "fb3fbef6-0b34-462f-b235-627e17f7d72d"
-      ]
-    ]
-  ],
-  [
-    "'s view that slave morality has won over master morality — the meek inherited the Earth — because the weak had to be clever to survive whereas the masters were strong enough to remain stupid."
-  ]
-]
+
+// [
+//   [
+//     "The same idea is also brought up in "
+//   ],
+//   [
+//     "‣",
+//     [
+//       [
+//         "p",
+//         "b9afc468-4854-4888-b94d-961d802add16",
+//         "fb3fbef6-0b34-462f-b235-627e17f7d72d"
+//       ]
+//     ]
+//   ],
+//   [
+//     " when "
+//   ],
+//   [
+//     "‣",
+//     [
+//       [
+//         "p",
+//         "e81f2af0-7675-4d44-9c8e-53e2fc772efc",
+//         "fb3fbef6-0b34-462f-b235-627e17f7d72d"
+//       ]
+//     ]
+//   ],
+//   [
+//     " describes "
+//   ],
+//   [
+//     "‣",
+//     [
+//       [
+//         "p",
+//         "ffd56561-6677-4b3f-9a53-f0d879bdd9e2",
+//         "fb3fbef6-0b34-462f-b235-627e17f7d72d"
+//       ]
+//     ]
+//   ],
+//   [
+//     "'s view that slave morality has won over master morality — the meek inherited the Earth — because the weak had to be clever to survive whereas the masters were strong enough to remain stupid."
+//   ]
+// ]
