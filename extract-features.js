@@ -129,7 +129,7 @@ function textify (text, bigIndex) {
 //  - [x] all text values from block properties.title, collection name, comment text
 //  - [x] all text types
 //  - [x] all block formats
-//  - [ ] all paths & file names (list of parents with title/name)
+//  - [x] all paths & file names (list of parents with title/name)
 //  - [ ] a tree of everyting with just type and children (starting from the space, and checking that everything gets touched at least once)
 //  - [ ] all properties for collections and their entries, making a nice lookup table
 //  - [ ] all attached files should be downloaded as UUID/filename (get-files scritp)

@@ -8,6 +8,7 @@ import { die } from './lib/die.js';
 import makeRel from './lib/rel.js';
 import loadJSON from './lib/load-json.js';
 import saveJSON from './lib/save-json.js';
+import sleep from './lib/sleep.js';
 
 const rel = makeRel(import.meta.url);
 const dataDir = rel('data');
@@ -31,12 +32,6 @@ for (const id of ids) {
   const data = await nc.getPage(id);
   await sleep(1000);
   saveJSON(outFile, data);
-}
-
-async function sleep (ms) {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
 }
 
 async function exists (path) {
