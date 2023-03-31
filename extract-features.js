@@ -107,13 +107,52 @@ tree.space = {
 seenIDs.add(space.id);
 await saveJSON(join(dataDir, 'tree.json'), tree);
 
+// check to see what identifiers we didn't process
+// [
+//   'block',
+//   'collection',
+//   'discussion',
+//   'comment',
+//   'reaction',
+// ].forEach(type => {
+//   console.warn(`# ${type}`);
+//   Object.keys(bigIndex[type])
+//     .filter(k => {
+//       if (seenIDs.has(k)) return false;
+//       if (bigIndex[type][k].value.space !== spaceId) return false;
+//       return true;
+//     })
+//     .forEach(k => console.warn(`. ${k}`))
+//   ;
+// });
+
+// XXX
+// things we want to extract:
+//  - [x] all block types, including callout types (they get an icon and background in the format)
+//  - [x] all text values from block properties.title, collection name, comment text
+//  - [x] all text types
+//  - [x] all block formats
+//  - [x] all paths & file names (list of parents with title/name)
+//  - [x] a tree of everyting with just type and children (starting from the space, and checking that everything gets touched at least once)
+//  - [x] all attached files should be downloaded as UUID/filename (get-files scritp)
+//  - [x] where is the reaction from
+//  - [ ] all tweets
+// things to do
+//  - [x] download all the files to make them available for simple copying
+//  - [ ] check that all the paths are legal on Mac and how to rename
+//  - [ ] some of the directories are tables: how can we make these files instead with the special data thing in Obsidian
+//  - [ ] check that BHK Interpretation is correct
+//  - [ ] pin tweets
+//  - [ ] be careful with alive=true
+
 function getBlock (id) {
+  seenIDs.add(id);
   const b = bigIndex.block[id].value;
   const block = {
     id: b.id,
     type: b.type,
-    content: (b.content || []).map(getBlock),
-    discussions: (b.discussions || []).map(getDiscussion),
+    content: prune((b.content || []).map(getBlock)),
+    discussions: prune((b.discussions || []).map(getDiscussion)),
   };
   if (b.type === 'page') {
     block.icon = b.format?.page_icon;
@@ -161,38 +200,43 @@ function getBlock (id) {
 // - 86347cf2-435e-4251-80b0-bf358859ee07 (not alive=tr)
 // those two are listed as views by 8b779ab6-c1f8-4351-97ca-783d5452ff8a which is a collection_view_page (child of space) that has 97e… as collection
 function getCollection (id, viewIDs) {
+  seenIDs.add(id);
   // we take the first view that's alive
-  const view = (viewIDs || []).map(id => bigIndex.collection_view[id]?.value).find(v => v.alive);
+  const view = (viewIDs || []).map(id => bigIndex.collection_view[id]?.value).find(v => v.alive)?.id;
   const c = bigIndex.collection[id].value;
-  const q = bigIndex.collection_query[id]?.[view]?.value;
+  const q = bigIndex.collection_query[id]?.[view];
+  if (!q) console.warn(`No view for ${id}/${view}`);
   return {
     id: c.id,
-    view: q.view,
+    view,
     type: 'collection',
     name: textify(c.name),
-    content: (q.collection_group_results?.blockIds || []).map(getBlock),
+    content: prune((q.collection_group_results?.blockIds || []).map(getBlock)),
   };
 }
 
 function getDiscussion (id) {
+  seenIDs.add(id);
   const d = bigIndex.discussion[id].value;
   return {
     id: d.id,
     type: 'discussion',
-    comments: (d.comments || []).map(getComment),
+    comments: prune((d.comments || []).map(getComment)),
   };
 }
 
 function getComment (id) {
+  seenIDs.add(id);
   const c = bigIndex.comment[id].value;
   return {
     id: c.id,
     type: 'comment',
-    reactions: (c.reactions || []).map(getReaction),
+    reactions: prune((c.reactions || []).map(getReaction)),
   };
 }
 
 function getReaction (id) {
+  seenIDs.add(id);
   const r = bigIndex.reaction[id].value;
   return {
     id: r.id,
@@ -202,7 +246,7 @@ function getReaction (id) {
 }
 
 function textify (text) {
-  return text
+  return (text || [])
     .map(([txt, meta]) => {
       if (!meta || !meta.find(cmd => cmd.length > 1)) return txt;
       if (txt === '⁍') {
@@ -230,23 +274,7 @@ function textify (text) {
   ;
 }
 
-
-// XXX
-// things we want to extract:
-//  - [x] all block types, including callout types (they get an icon and background in the format)
-//  - [x] all text values from block properties.title, collection name, comment text
-//  - [x] all text types
-//  - [x] all block formats
-//  - [x] all paths & file names (list of parents with title/name)
-//  - [ ] a tree of everyting with just type and children (starting from the space, and checking that everything gets touched at least once)
-//  - [ ] all properties for collections and their entries, making a nice lookup table
-//  - [x] all attached files should be downloaded as UUID/filename (get-files scritp)
-//  - [x] where is the reaction from
-//  - [ ] all tweets
-// things to do
-//  - [x] download all the files to make them available for simple copying
-//  - [ ] check that all the paths are legal on Mac and how to rename
-//  - [ ] some of the directories are tables: how can we make these files instead with the special data thing in Obsidian
-//  - [ ] check that BHK Interpretation is correct
-//  - [ ] pin tweets
-//  - [ ] be careful with alive=true
+function prune (arr) {
+  if (arr && !arr.length) return undefined;
+  return arr;
+}
