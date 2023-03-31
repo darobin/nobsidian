@@ -11,3 +11,4 @@ My own Notion →  Obsidian converter
 1. `./ids-from-exports.js`: extracts and stores all content identifiers from the export tree (you can then discard the tree)
 1. `./download-ids.js`: downloads all the JSON content (with full context, so lots of rich duplication but we should have everything)
 1. `./make-big-index.js`: makes one big index with all the JSON (for easier further processing)
+1. `./get-files.js`: downloads all the files

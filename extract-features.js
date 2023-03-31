@@ -93,7 +93,115 @@ await saveJSON(join(dataDir, 'text-values.json'), [...textValues]);
 });
 await saveJSON(join(dataDir, 'all-paths.json'), [...paths]);
 
-function textify (text, bigIndex) {
+const tree = {};
+const seenIDs = new Set();
+// start with the space
+const space = bigIndex.space[spaceId].value;
+tree.space = {
+  id: space.id,
+  type: 'space',
+  name: space.name,
+  icon: space.icon,
+  pages: space.pages.map(getBlock),
+};
+seenIDs.add(space.id);
+await saveJSON(join(dataDir, 'tree.json'), tree);
+
+function getBlock (id) {
+  const b = bigIndex.block[id].value;
+  const block = {
+    id: b.id,
+    type: b.type,
+    content: (b.content || []).map(getBlock),
+    discussions: (b.discussions || []).map(getDiscussion),
+  };
+  if (b.type === 'page') {
+    block.icon = b.format?.page_icon;
+    block.title = textify(b.properties?.title);
+  }
+  else if (b.type === 'collection_view_page' || b.type === 'collection_view') {
+    block.icon = b.format?.page_icon;
+    block.title = textify(b.properties?.title);
+    if (b.collection_id) block.collection = getCollection(b.collection_id, b.view_ids);
+  }
+  else if (b.type === 'image' || b.type === 'file' || b.type === 'video' || b.type === 'pdf') {
+    block.source = b.properties?.source?.[0]?.[0];
+    block.title = textify(b.properties?.title);
+    block.fileIDs = b.file_ids;
+  }
+  else if (b.type === 'tweet') {
+    block.source = b.properties?.source?.[0]?.[0];
+  }
+  else if (b.type === 'callout') {
+    block.icon = b.format?.page_icon;
+    block.colour = b.format?.block_color;
+    block.title = textify(b.properties?.title);
+  }
+  else if (b.type === 'transclusion_reference') {
+    block.pointer = b.format?.transclusion_reference_pointer?.id;
+    block.pointerType = b.format?.transclusion_reference_pointer?.table;
+  }
+  else if (b.type === 'alias') {
+    block.alias = b.format?.alias_pointer;
+  }
+  else if (b.type === 'column') {
+    block.ratio = b.format?.column_ratio;
+  }
+  else if (b.type === 'external_object_instance') {
+    block.source = b.format;
+  }
+  // "copy_indicator" — not sure what these are, they are parented in the space, but they don't seem useful
+  // "alias" — these can point outside the space, be mindful
+  return block;
+}
+
+// eg. collections
+// cq 97e380a5-ab4c-4a9b-a9c0-18d636978581 has kids (it's collection References):
+// - 5bacb295-f418-48c5-8fb0-d138b222d4f9
+// - 86347cf2-435e-4251-80b0-bf358859ee07 (not alive=tr)
+// those two are listed as views by 8b779ab6-c1f8-4351-97ca-783d5452ff8a which is a collection_view_page (child of space) that has 97e… as collection
+function getCollection (id, viewIDs) {
+  // we take the first view that's alive
+  const view = (viewIDs || []).map(id => bigIndex.collection_view[id]?.value).find(v => v.alive);
+  const c = bigIndex.collection[id].value;
+  const q = bigIndex.collection_query[id]?.[view]?.value;
+  return {
+    id: c.id,
+    view: q.view,
+    type: 'collection',
+    name: textify(c.name),
+    content: (q.collection_group_results?.blockIds || []).map(getBlock),
+  };
+}
+
+function getDiscussion (id) {
+  const d = bigIndex.discussion[id].value;
+  return {
+    id: d.id,
+    type: 'discussion',
+    comments: (d.comments || []).map(getComment),
+  };
+}
+
+function getComment (id) {
+  const c = bigIndex.comment[id].value;
+  return {
+    id: c.id,
+    type: 'comment',
+    reactions: (c.reactions || []).map(getReaction),
+  };
+}
+
+function getReaction (id) {
+  const r = bigIndex.reaction[id].value;
+  return {
+    id: r.id,
+    type: 'reaction',
+    icon: r.icon,
+  };
+}
+
+function textify (text) {
   return text
     .map(([txt, meta]) => {
       if (!meta || !meta.find(cmd => cmd.length > 1)) return txt;
@@ -132,10 +240,13 @@ function textify (text, bigIndex) {
 //  - [x] all paths & file names (list of parents with title/name)
 //  - [ ] a tree of everyting with just type and children (starting from the space, and checking that everything gets touched at least once)
 //  - [ ] all properties for collections and their entries, making a nice lookup table
-//  - [ ] all attached files should be downloaded as UUID/filename (get-files scritp)
+//  - [x] all attached files should be downloaded as UUID/filename (get-files scritp)
 //  - [x] where is the reaction from
+//  - [ ] all tweets
 // things to do
-//  - [ ] download all the files to make them available for simple copying
+//  - [x] download all the files to make them available for simple copying
 //  - [ ] check that all the paths are legal on Mac and how to rename
 //  - [ ] some of the directories are tables: how can we make these files instead with the special data thing in Obsidian
 //  - [ ] check that BHK Interpretation is correct
+//  - [ ] pin tweets
+//  - [ ] be careful with alive=true
