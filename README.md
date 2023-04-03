@@ -12,3 +12,4 @@ My own Notion →  Obsidian converter
 1. `./download-ids.js`: downloads all the JSON content (with full context, so lots of rich duplication but we should have everything)
 1. `./make-big-index.js`: makes one big index with all the JSON (for easier further processing)
 1. `./get-files.js`: downloads all the files
+1. `./extract-features.js`: analysis of the big index to generate files that are used for other steps, but also to understand what is going on

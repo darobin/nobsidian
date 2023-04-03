@@ -5,6 +5,8 @@ import makeRel from './lib/rel.js';
 import loadJSON from './lib/load-json.js';
 import saveJSON from './lib/save-json.js';
 
+const fnRx = /[/:]/;
+
 const rel = makeRel(import.meta.url);
 const dataDir = rel('data');
 const spaceId = 'fb3fbef6-0b34-462f-b235-627e17f7d72d';
@@ -94,21 +96,7 @@ await saveJSON(join(dataDir, 'text-values.json'), [...textValues]);
 [...Object.values(bigIndex.collection), ...(Object.values(bigIndex.block).filter(n => n.value.type === 'page' && n.value.properties?.title))]
 .filter(n => n.value.space_id === spaceId)
 .forEach(root => {
-  // find parent path, and mkdir
-  const parents = ancestryAndSelf(root)
-  let lastType;
-  let parentPath = join(
-    ...(parents
-      .map(obj => {
-        const { type } = obj;
-        lastType = type || 'collection';
-        if (type === 'collection_view_page') return;
-        if (type === 'page') return textify(obj.properties?.title, bigIndex);
-        if (!type && obj.name) return textify(obj.name, bigIndex);
-      })
-      .filter(Boolean))
-  );
-  parentPath += (lastType === 'collection') ? '/' : '.md';
+  let parentPath = traceParentPath(root);
   paths.add(parentPath);
 });
 await saveJSON(join(dataDir, 'all-paths.json'), [...paths]);
@@ -174,7 +162,8 @@ await saveJSON(join(dataDir, 'tweets.json'), [...tweets]);
 function getBlock (id) {
   seenIDs.add(id);
   if (!bigIndex.block[id]) return console.warn(`Block ${id} not found`);
-  const b = bigIndex.block[id].value;
+  const blk = bigIndex.block[id];
+  const b = blk.value;
   const block = {
     id: b.id,
     type: b.type,
@@ -184,6 +173,7 @@ function getBlock (id) {
   if (b.type === 'page') {
     block.icon = b.format?.page_icon;
     block.title = textify(b.properties?.title);
+    block.path = traceParentPath(blk);
   }
   else if (b.type === 'collection_view_page' || b.type === 'collection_view') {
     block.icon = b.format?.page_icon;
@@ -232,11 +222,13 @@ function getBlock (id) {
 // those two are listed as views by 8b779ab6-c1f8-4351-97ca-783d5452ff8a which is a collection_view_page (child of space) that has 97e… as collection
 function getCollection (id, viewIDs) {
   seenIDs.add(id);
-  const c = bigIndex.collection[id].value;
+  const col = bigIndex.collection[id];
+  const c = col.value;
   const ret = {
     id: c.id,
     type: 'collection',
     name: textify(c.name),
+    path: traceParentPath(col),
   };
   let hasQueryView = true;
   (viewIDs || []).forEach(vid => {
@@ -299,8 +291,16 @@ function textify (text) {
           return content
             .replace(/\\mathrm\{P\}/g, '𝖯')
             .replace(/\\mathrm\{Q\}/g, '𝖰')
+            .replace(/\\mathrm\{x\}/g, '𝑥')
+            .replace(/\\mathrm\{A\}/g, '𝖠')
+            .replace(/\\mathrm\{P\(x\)\}/g, '𝖯(𝑥)')
             .replace(/\\implies/g, '⟹')
             .replace(/\\land/g, '∧')
+            .replace(/\\lor/g, '∨')
+            .replace(/\\forall/g, '∀')
+            .replace(/\\exists/g, '∃')
+            .replace(/\\neg/g, '¬')
+            .replace(/\\in/g, '∈')
           ;
         }
         else return console.warn(`UKNOWN CMD ${cmd}`);
@@ -334,4 +334,31 @@ function ancestryAndSelf (root) {
     parents.unshift(curNode);
   }
   return parents;
+}
+
+function traceParentPath (root) {
+  const parents = ancestryAndSelf(root)
+  let lastType;
+  // console.warn(`* ${parents.length} depth: ${JSON.stringify(parents.map(p => p.id))}`);
+  let parentPath = join(
+    ...(parents
+      .map(obj => {
+        const { type } = obj;
+        lastType = type || 'collection';
+        if (type === 'collection_view_page') return;
+        if (type === 'page') return sanitiseFileName(textify(obj.properties?.title, bigIndex));
+        if (!type && obj.name) return sanitiseFileName(textify(obj.name, bigIndex));
+      })
+      .filter(Boolean))
+  );
+  parentPath += (lastType === 'collection') ? '/' : '.md';
+  return parentPath;
+}
+
+function sanitiseFileName (str) {
+  if (/[\\]/.test(str)) console.warn(str);
+  return str
+    .replace(/:/g, '：') // full-width colon
+    .replace(/\//g, '／') // full-width solidus
+  ;
 }
