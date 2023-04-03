@@ -147,15 +147,6 @@ await saveJSON(join(dataDir, 'tweets.json'), [...tweets]);
 //  - [x] all attached files should be downloaded as UUID/filename (get-files scritp)
 //  - [x] where is the reaction from
 //  - [x] all tweets
-// things to do
-//  - [x] download all the files to make them available for simple copying
-//  - [ ] check that all the paths are legal on Mac and how to rename
-//  - [ ] some of the directories are tables: how can we make these files instead with the special data thing in Obsidian
-//  - [ ] check that BHK Interpretation is correct
-//  - [ ] pin tweets
-//  - [x] be careful with alive=true
-//  - [ ] check that we know how to convert every block type and every kind of text
-//  - [ ] table_block_* fields are important for table blocks
 
 function getBlock (id) {
   seenIDs.add(id);
