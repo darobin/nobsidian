@@ -130,8 +130,6 @@ seenIDs.add(space.id);
 await saveJSON(join(dataDir, 'tree.json'), tree);
 await saveJSON(join(dataDir, 'tweets.json'), [...tweets]);
 
-// XXX still missing one tweet!
-
 // check to see what identifiers we didn't process
 [
   'block',
@@ -162,14 +160,14 @@ await saveJSON(join(dataDir, 'tweets.json'), [...tweets]);
 //  - [x] a tree of everyting with just type and children (starting from the space, and checking that everything gets touched at least once)
 //  - [x] all attached files should be downloaded as UUID/filename (get-files scritp)
 //  - [x] where is the reaction from
-//  - [ ] all tweets
+//  - [x] all tweets
 // things to do
 //  - [x] download all the files to make them available for simple copying
 //  - [ ] check that all the paths are legal on Mac and how to rename
 //  - [ ] some of the directories are tables: how can we make these files instead with the special data thing in Obsidian
 //  - [ ] check that BHK Interpretation is correct
 //  - [ ] pin tweets
-//  - [ ] be careful with alive=true
+//  - [x] be careful with alive=true
 //  - [ ] check that we know how to convert every block type and every kind of text
 //  - [ ] table_block_* fields are important for table blocks
 
