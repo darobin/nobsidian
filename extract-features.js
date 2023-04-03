@@ -5,8 +5,6 @@ import makeRel from './lib/rel.js';
 import loadJSON from './lib/load-json.js';
 import saveJSON from './lib/save-json.js';
 
-const fnRx = /[/:]/;
-
 const rel = makeRel(import.meta.url);
 const dataDir = rel('data');
 const spaceId = 'fb3fbef6-0b34-462f-b235-627e17f7d72d';
