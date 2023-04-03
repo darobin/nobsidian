@@ -18,6 +18,35 @@ const formats = new Set();
 const textValues = new Set();
 const textTypes = new Set();
 const paths = new Set();
+const tweets = new Set();
+
+// remove dead branches
+const deleteMe = {};
+Object.entries(bigIndex.block).forEach(([k, v]) => {
+  if (v.value.space_id !== spaceId) {
+    delete bigIndex.block[k];
+    return;
+  }
+  let deadAncestor = false;
+  ancestryAndSelf(v).forEach(n => {
+    let { type = 'collection', id, alive } = n;
+    if (type !== 'collection') type = 'block';
+    if (!id) {
+      console.warn(JSON.stringify(n, null, 2));
+    }
+    if (alive === false) deadAncestor = true;
+    if (deadAncestor) {
+      if (!deleteMe[type]) deleteMe[type] = new Set();
+      deleteMe[type].add(id);
+    }
+  });
+});
+Object.entries(deleteMe).forEach(([type, set]) => {
+  console.warn(`Deleting ${[...set].length} from ${type}`);
+  [...set].forEach(id => delete bigIndex[type][id]);
+  deleteMe[type] = [...set];
+});
+await saveJSON(join(dataDir, 'deleted-because-dead.json'), deleteMe);
 
 Object.values(bigIndex.block).forEach(v => {
   const { type, format, properties } = v.value;
@@ -65,17 +94,8 @@ await saveJSON(join(dataDir, 'text-values.json'), [...textValues]);
 [...Object.values(bigIndex.collection), ...(Object.values(bigIndex.block).filter(n => n.value.type === 'page' && n.value.properties?.title))]
 .filter(n => n.value.space_id === spaceId)
 .forEach(root => {
-  // console.warn();
   // find parent path, and mkdir
-  const parents = [root.value];
-  let curNode = root.value;
-  while (curNode?.parent_table && curNode.parent_id) {
-    const { parent_table: pTable, parent_id: pId } = curNode;
-    if (pTable === 'space' || pTable === 'team') break;
-    if (!bigIndex[pTable][pId]) console.warn(`NOT FOUND ${pTable}/${pId} for ${curNode.id}`);
-    curNode = bigIndex[pTable][pId].value;
-    parents.unshift(curNode);
-  }
+  const parents = ancestryAndSelf(root)
   let lastType;
   let parentPath = join(
     ...(parents
@@ -97,34 +117,40 @@ const tree = {};
 const seenIDs = new Set();
 // start with the space
 const space = bigIndex.space[spaceId].value;
+
 tree.space = {
   id: space.id,
   type: 'space',
   name: space.name,
   icon: space.icon,
-  pages: space.pages.map(getBlock),
+  // we don't use space.pages because pages can have a space root but not be listed there
+  pages: Object.keys(bigIndex.block).filter(k => bigIndex.block[k].value?.parent_id === spaceId).map(getBlock),
 };
 seenIDs.add(space.id);
 await saveJSON(join(dataDir, 'tree.json'), tree);
+await saveJSON(join(dataDir, 'tweets.json'), [...tweets]);
+
+// XXX still missing one tweet!
 
 // check to see what identifiers we didn't process
-// [
-//   'block',
-//   'collection',
-//   'discussion',
-//   'comment',
-//   'reaction',
-// ].forEach(type => {
-//   console.warn(`# ${type}`);
-//   Object.keys(bigIndex[type])
-//     .filter(k => {
-//       if (seenIDs.has(k)) return false;
-//       if (bigIndex[type][k].value.space !== spaceId) return false;
-//       return true;
-//     })
-//     .forEach(k => console.warn(`. ${k}`))
-//   ;
-// });
+[
+  'block',
+  'collection',
+  'discussion',
+  'comment',
+  'reaction',
+].forEach(type => {
+  console.warn(`# ${type}`);
+  const missing = Object.keys(bigIndex[type])
+    .filter(k => {
+      if (seenIDs.has(k)) return false;
+      if (bigIndex[type][k].value.space_id && bigIndex[type][k].value.space_id !== spaceId) return false;
+      return true;
+    })
+  ;
+  missing.forEach(k => console.warn(`. ${k}`));
+  console.warn(`${missing.length} missing.`);
+});
 
 // XXX
 // things we want to extract:
@@ -144,9 +170,12 @@ await saveJSON(join(dataDir, 'tree.json'), tree);
 //  - [ ] check that BHK Interpretation is correct
 //  - [ ] pin tweets
 //  - [ ] be careful with alive=true
+//  - [ ] check that we know how to convert every block type and every kind of text
+//  - [ ] table_block_* fields are important for table blocks
 
 function getBlock (id) {
   seenIDs.add(id);
+  if (!bigIndex.block[id]) return console.warn(`Block ${id} not found`);
   const b = bigIndex.block[id].value;
   const block = {
     id: b.id,
@@ -163,6 +192,9 @@ function getBlock (id) {
     block.title = textify(b.properties?.title);
     if (b.collection_id) block.collection = getCollection(b.collection_id, b.view_ids);
   }
+  else if (b.type === 'table') {
+    if (b.collection_id) block.collection = getCollection(b.collection_id);
+  }
   else if (b.type === 'image' || b.type === 'file' || b.type === 'video' || b.type === 'pdf') {
     block.source = b.properties?.source?.[0]?.[0];
     block.title = textify(b.properties?.title);
@@ -170,6 +202,7 @@ function getBlock (id) {
   }
   else if (b.type === 'tweet') {
     block.source = b.properties?.source?.[0]?.[0];
+    tweets.add(block.source);
   }
   else if (b.type === 'callout') {
     block.icon = b.format?.page_icon;
@@ -201,18 +234,31 @@ function getBlock (id) {
 // those two are listed as views by 8b779ab6-c1f8-4351-97ca-783d5452ff8a which is a collection_view_page (child of space) that has 97e… as collection
 function getCollection (id, viewIDs) {
   seenIDs.add(id);
-  // we take the first view that's alive
-  const view = (viewIDs || []).map(id => bigIndex.collection_view[id]?.value).find(v => v.alive)?.id;
   const c = bigIndex.collection[id].value;
-  const q = bigIndex.collection_query[id]?.[view];
-  if (!q) console.warn(`No view for ${id}/${view}`);
-  return {
+  const ret = {
     id: c.id,
-    view,
     type: 'collection',
     name: textify(c.name),
-    content: prune((q.collection_group_results?.blockIds || []).map(getBlock)),
   };
+  let hasQueryView = true;
+  (viewIDs || []).forEach(vid => {
+    if (!bigIndex.collection_query[id]?.[vid]) hasQueryView = false;
+  });
+  if (hasQueryView) {
+    ret.views = (viewIDs || []).map(vid => {
+      seenIDs.add(vid);
+      const q = bigIndex.collection_query[id][vid];
+      return {
+        id: vid,
+        type: 'collection_view',
+        content: prune((q.collection_group_results?.blockIds || []).map(getBlock)),
+      };
+    });
+  }
+  else {
+    ret.content = prune(Object.keys(bigIndex.block).filter(k => bigIndex.block[k].value?.parent_id === id)).map(getBlock);
+  }
+  return ret;
 }
 
 function getDiscussion (id) {
@@ -277,4 +323,17 @@ function textify (text) {
 function prune (arr) {
   if (arr && !arr.length) return undefined;
   return arr;
+}
+
+function ancestryAndSelf (root) {
+  const parents = [root.value];
+  let curNode = root.value;
+  while (curNode?.parent_table && curNode.parent_id) {
+    const { parent_table: pTable, parent_id: pId } = curNode;
+    if (pTable === 'space' || pTable === 'team') break;
+    if (!bigIndex[pTable][pId]) console.warn(`NOT FOUND ${pTable}/${pId} for ${curNode.id}`);
+    curNode = bigIndex[pTable][pId].value;
+    parents.unshift(curNode);
+  }
+  return parents;
 }
