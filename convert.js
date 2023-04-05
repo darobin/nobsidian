@@ -11,6 +11,7 @@ const obsidianVault = '/Users/robin/Code/darobin/static-notion-export/Static Not
 
 const bigIndex = await loadJSON(join(dataDir, 'big-index.json'));
 const tree = await loadJSON(join(dataDir, 'tree.json'));
+const schemata = {};
 
 for (const page of tree.space.pages) {
   await makePage(page);
@@ -34,17 +35,26 @@ async function makeCollection (c) {
   const { id, name, path, views } = c;
   await mkdir(join(obsidianVault, path), { recursive: true });
   const ast = astFromTitle(name);
-  // XXX
-  //  create a _.md page with the name as h1
-  //  iterate over views, each of which is a data table of sorts
+  const { schema } = bigIndex.collection[id].value;
+  schemata[id] = schema;
+  Object.values(schema).forEach(v => {
+    v.niceName = niceName(v.name);
+  });
+  views.forEach(v => {
+    const view = bigIndex.collection_view[v.id].value;
+    if (view.name) ast.children.push(heading(2, view.name));
+    const isTable = !!view.format?.table_properties;
+    const props = (view.format?.table_properties || view.format?.list_properties)?.filter(({ visible, property }) => visible && property !== 'title').map(({ property }) => schema[property].niceName);
+    if (props) ast.children.push(code('dataview', `${isTable ? `TABLE ${props.join(', ')}` : 'LIST'}\nFROM "${path.replace(/\/$/, '')}"\n`));
+  });
   await writeFile(join(obsidianVault, path, '_.md'), md(ast));
 }
 
 
 // XXX
-// - walk the tree
-// - generate the space
-// - create directories
+// - walk:
+//    - collections
+//    - pages
 // - create index for collections, plus a query for each view
 // - when there is more than one view, process both but keep track of what each view has processed to not do it twice
 // - use the data thing to set data on pages that have a collection as their parent
@@ -68,10 +78,10 @@ async function makeCollection (c) {
 //  - [ ] "u"
 // BLOCK TYPES
 //  - [ ] "page",
-//  - [ ] "collection_view_page",
+//  - [x] "collection_view_page",
 //  - [ ] "bulleted_list",
 //  - [ ] "to_do",
-//  - [ ] "collection_view",
+//  - [x] "collection_view",
 //  - [ ] "quote",
 //  - [ ] "text",
 //  - [ ] "header",
@@ -107,6 +117,12 @@ async function makeCollection (c) {
 //  - [ ] table_block_* fields are important for table blocks
 //  - [ ] use https://github.com/FlorianWoelki/obsidian-icon-folder to add icons manually
 
+function niceName (str) {
+  const ret = str.toLowerCase().replace(/\s+(\w)/g, (_,c) => c.toUpperCase());
+  if (ret === 'lastModified' || ret === 'lastEditedTime') return 'file.ctime';
+  return ret;
+}
+
 function md (ast) {
   return toMarkdown(ast, {
     bullet: '-',
@@ -116,15 +132,32 @@ function md (ast) {
   });
 }
 
-function astFromTitle (title) {
+// we ignore the title because Obsidian uses the file name for that
+function astFromTitle () {
   return {
     type: 'root',
     children: [
-      {
-        type: 'heading',
-        depth: 1,
-        children: [{ type: 'text', value: title }],
-      },
+      // {
+      //   type: 'heading',
+      //   depth: 1,
+      //   children: [{ type: 'text', value: title }],
+      // },
     ],
+  };
+}
+
+function heading (depth, value) {
+  return {
+    type: 'heading',
+    depth,
+    children: [{ type: 'text', value }],
+  };
+}
+
+function code (lang, value) {
+  return {
+    type: 'code',
+    lang,
+    value,
   };
 }
