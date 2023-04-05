@@ -23,6 +23,18 @@ async function makePage (p) {
   if (type === 'collection_view_page' || type === 'collection_view') return await makeCollection(p.collection);
   if (type === 'page') {
     const ast = astFromTitle(p.title);
+    const page = bigIndex.block[id].value;
+    if (page.parent_table === 'collection' && page.properties && schemata[page.parent_id]) {
+      const pv = [];
+      Object
+        .entries(page.properties)
+        .map(([k, v]) => {
+          if (k === 'title' || !schemata[page.parent_id][k]?.niceName) return false;
+          pv.push(text(`${schemata[page.parent_id][k].niceName}::}`, mdText(v), text('\n')));
+        })
+      ;
+      ast.children.push(paragraph(pv));
+    }
     // XXX
     //  recurse into the blocks
     await writeFile(join(obsidianVault, p.path), md(ast));
@@ -48,6 +60,15 @@ async function makeCollection (c) {
     if (props) ast.children.push(code('dataview', `${isTable ? `TABLE ${props.join(', ')}` : 'LIST'}\nFROM "${path.replace(/\/$/, '')}"\n`));
   });
   await writeFile(join(obsidianVault, path, '_.md'), md(ast));
+  // now recurse
+  const seenHere = new Set();
+  for (const v of views) {
+    for (const item of v.content) {
+      if (seenHere.has(item.id)) continue;
+      seenHere.add(item.id);
+      await makePage(item);
+    }
+  }
 }
 
 
@@ -76,6 +97,19 @@ async function makeCollection (c) {
 //  - [ ] "eoi",
 //  - [ ] "s",
 //  - [ ] "u"
+function mdText (v) {
+  return v.map(([txt, meta]) => {
+    if (!meta) return text(txt);
+    // XXX
+    //  - for "decoration" meta, pile them deeper in order to nest them as children with eventually the text in there
+    //  - for "indirection" meta, links and such, generate the text and create the right structure
+  }).join('');
+}
+
+function text (value) {
+  return { type: 'text', value };
+}
+
 // BLOCK TYPES
 //  - [ ] "page",
 //  - [x] "collection_view_page",
@@ -151,6 +185,13 @@ function heading (depth, value) {
     type: 'heading',
     depth,
     children: [{ type: 'text', value }],
+  };
+}
+
+function paragraph (children) {
+  return {
+    type: 'paragraph',
+    children,
   };
 }
 
