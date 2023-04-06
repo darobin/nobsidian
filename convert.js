@@ -20,7 +20,7 @@ for (const page of tree.space.pages) {
 }
 
 async function makePage (p) {
-  const { id, type } = p;
+  const { id, type, content } = p;
   if (type === 'copy_indicator') return;
   if (type === 'collection_view_page' || type === 'collection_view') return await makeCollection(p.collection);
   if (type === 'page') {
@@ -37,14 +37,15 @@ async function makePage (p) {
         .map(([k, v]) => {
           if (k === 'title' || !schemata[page.parent_id][k]?.niceName) return false;
           obj[schemata[page.parent_id][k].niceName] = md(root(mdText(v))).replace(/\n+$/, '');
-          // console.warn(`"${md(root(mdText(v)))}"`);
         })
       ;
       ast.children.push(frontmatter(obj));
     }
-    // XXX
-    //  recurse into the blocks
-    await writeFile(join(obsidianVault, p.path), md(ast));
+    for (const b of (content || [])) {
+      const child = await makeBlock(b);
+      if (child) ast.children.push(child);
+    }
+    await writeFile(join(obsidianVault, p.path), md(ast, id));
     return;
   }
   console.warn(`Unexpected type in makePage: ${type} (${id})`);
@@ -92,20 +93,21 @@ async function makeCollection (c) {
 // - copy files
 
 // TEXT TYPES
-//  - [ ] "p",
-//  - [ ] "a",
-//  - [ ] "i",
-//  - [ ] "b",
-//  - [ ] "e",
-//  - [ ] "_",
-//  - [ ] "d",
-//  - [ ] "h",
-//  - [ ] "m",
-//  - [ ] "c",
-//  - [ ] "eoi",
-//  - [ ] "s",
-//  - [ ] "u"
-function mdText (v) {
+// * indirection
+//  - [ ] "p": internal link [ "‣", [ [ "p", "206e9f49-65c1-4c75-87de-ac2fe661d496", "fb3fbef6-0b34-462f-b235-627e17f7d72d" ] ] ],
+//  - [ ] "e": embedded math inline [ "⁍", [ [ "e", "\\mathit{x}" ] ] ]
+//  - [ ] "d": date [ "‣", [ [ "d", { "type": "date", "start_date": "2021-08-14" } ] ] ]
+//  - [ ] "eoi": embedded object [ "‣", [ [ "eoi", "c452d50b-02cd-4a43-a51e-269c8fc496c2" ] ] ]
+// * decoration, these form lists like [ "The Separation of Platforms and Commerce", [ [ "i" ], [ "a", "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=3180174" ] ] ]
+//  - [ ] "a": URL link [ "https://twitter.com/schock/status/1524840701749501958", [ [ "a", "https://twitter.com/schock/status/1524840701749501958" ] ] ]
+//  - [ ] "i": italics
+//  - [ ] "b": bold
+//  - [ ] "_": underline
+//  - [ ] "h": text color [ " on the first machines.", [ [ "h", "red" ] ] ],
+//  - [ ] "m": comment [ "^", [ [ "m", "a1d53b4f-184e-4346-9431-431224c6e298" ] ] ],
+//  - [ ] "c": code [ "Nihilism and Technology", [ [ "c" ] ] ]
+//  - [ ] "s": strikethrough
+function mdText (v = []) {
   return v.map(([txt, meta]) => {
     if (!txt) return false;
     if (!meta) return text(txt);
@@ -150,7 +152,18 @@ function text (value) {
 //  - [ ] "table",
 //  - [ ] "table_row",
 //  - [ ] "pdf"
+async function makeBlock (b) {
+  const { id, type, content } = b;
+  const block = bigIndex.block[id].value;
+  if (type === 'text') {
+    // XXX
+    // if content, what do we do here?
+    // if (content) console.warn(`Text ${id} has content.`);
+    return paragraph(mdText(block.properties?.title));
+  }
 
+  // console.warn(`Unexpected type in makeBlock: ${type} (${id})`);
+}
 
 // things to do
 //  - [ ] some of the directories are tables: how can we make these files instead with the special data thing in Obsidian
@@ -166,14 +179,20 @@ function niceName (str) {
   return ret;
 }
 
-function md (ast) {
-  return toMarkdown(ast, {
-    bullet: '-',
-    listItemIndent: 'one',
-    resourceLink: true,
-    rule: '-',
-    extensions: [frontmatterToMarkdown(['yaml'])],
-  });
+function md (ast, id) {
+  try {
+    return toMarkdown(ast, {
+      bullet: '-',
+      listItemIndent: 'one',
+      resourceLink: true,
+      rule: '-',
+      extensions: [frontmatterToMarkdown(['yaml'])],
+    });
+  }
+  catch (err) {
+    console.warn(`Error in ${id}`);
+    console.error(err);
+  }
 }
 
 function root (children = []) {
