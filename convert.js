@@ -2,6 +2,8 @@
 import { join } from 'node:path';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { toMarkdown } from 'mdast-util-to-markdown';
+import { frontmatterToMarkdown } from 'mdast-util-frontmatter';
+import { stringify } from 'yaml'
 import makeRel from './lib/rel.js';
 import loadJSON from './lib/load-json.js';
 
@@ -22,18 +24,23 @@ async function makePage (p) {
   if (type === 'copy_indicator') return;
   if (type === 'collection_view_page' || type === 'collection_view') return await makeCollection(p.collection);
   if (type === 'page') {
-    const ast = astFromTitle(p.title);
+    // we ignore the title because Obsidian uses the file name for that
+    const ast = root();
     const page = bigIndex.block[id].value;
+    // XXX HERE
+    // the output is kind of there, but broken
+    // after that, do mdText()
     if (page.parent_table === 'collection' && page.properties && schemata[page.parent_id]) {
-      const pv = [];
+      const obj = {};
       Object
         .entries(page.properties)
         .map(([k, v]) => {
           if (k === 'title' || !schemata[page.parent_id][k]?.niceName) return false;
-          pv.push(text(`${schemata[page.parent_id][k].niceName}::}`, mdText(v), text('\n')));
+          obj[schemata[page.parent_id][k].niceName] = md(root(mdText(v))).replace(/\n+$/, '');
+          // console.warn(`"${md(root(mdText(v)))}"`);
         })
       ;
-      ast.children.push(paragraph(pv));
+      ast.children.push(frontmatter(obj));
     }
     // XXX
     //  recurse into the blocks
@@ -44,9 +51,10 @@ async function makePage (p) {
 }
 
 async function makeCollection (c) {
-  const { id, name, path, views } = c;
+  const { id, path, views } = c;
   await mkdir(join(obsidianVault, path), { recursive: true });
-  const ast = astFromTitle(name);
+  // we ignore the title because Obsidian uses the file name for that
+  const ast = root();
   const { schema } = bigIndex.collection[id].value;
   schemata[id] = schema;
   Object.values(schema).forEach(v => {
@@ -99,11 +107,12 @@ async function makeCollection (c) {
 //  - [ ] "u"
 function mdText (v) {
   return v.map(([txt, meta]) => {
+    if (!txt) return false;
     if (!meta) return text(txt);
     // XXX
     //  - for "decoration" meta, pile them deeper in order to nest them as children with eventually the text in there
     //  - for "indirection" meta, links and such, generate the text and create the right structure
-  }).join('');
+  }).filter(Boolean);
 }
 
 function text (value) {
@@ -163,20 +172,14 @@ function md (ast) {
     listItemIndent: 'one',
     resourceLink: true,
     rule: '-',
+    extensions: [frontmatterToMarkdown(['yaml'])],
   });
 }
 
-// we ignore the title because Obsidian uses the file name for that
-function astFromTitle () {
+function root (children = []) {
   return {
     type: 'root',
-    children: [
-      // {
-      //   type: 'heading',
-      //   depth: 1,
-      //   children: [{ type: 'text', value: title }],
-      // },
-    ],
+    children,
   };
 }
 
@@ -201,4 +204,11 @@ function code (lang, value) {
     lang,
     value,
   };
+}
+
+function frontmatter (data) {
+  return {
+    type: 'yaml',
+    value: stringify(data).replace(/\n+$/, ''),
+  }
 }
