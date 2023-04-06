@@ -41,10 +41,7 @@ async function makePage (p) {
       ;
       ast.children.push(frontmatter(obj));
     }
-    for (const b of (content || [])) {
-      const child = await makeBlock(b);
-      if (child) ast.children.push(child);
-    }
+    await recurseBlocks(content, ast.children);
     await writeFile(join(obsidianVault, p.path), md(ast, id));
     return;
   }
@@ -123,19 +120,15 @@ function text (value) {
 
 // BLOCK TYPES
 //  - [ ] "page",
-//  - [x] "collection_view_page",
 //  - [ ] "bulleted_list",
 //  - [ ] "to_do",
-//  - [x] "collection_view",
 //  - [ ] "quote",
-//  - [ ] "text",
 //  - [ ] "header",
 //  - [ ] "numbered_list",
 //  - [ ] "image",
 //  - [ ] "transclusion_container",
 //  - [ ] "callout",
 //  - [ ] "tweet",
-//  - [x] "copy_indicator",
 //  - [ ] "code",
 //  - [ ] "table_of_contents",
 //  - [ ] "sub_sub_header",
@@ -156,13 +149,23 @@ async function makeBlock (b) {
   const { id, type, content } = b;
   const block = bigIndex.block[id].value;
   if (type === 'text') {
-    // XXX
-    // if content, what do we do here?
-    // if (content) console.warn(`Text ${id} has content.`);
-    return paragraph(mdText(block.properties?.title));
+    const p = paragraph(mdText(block.properties?.title));
+    if (content) {
+      const bq = [paragraph(text('(nobsidianNested::true)'))];
+      await recurseBlocks(content, bq);
+      return [p, blockquote(bq)];
+    }
+    return p;
   }
 
   // console.warn(`Unexpected type in makeBlock: ${type} (${id})`);
+}
+
+async function recurseBlocks (content, parentChildren) {
+  for (const b of (content || [])) {
+    const child = await makeBlock(b);
+    if (child) parentChildren.push(...(Array.isArray(child) ? child : [child]));
+  }
 }
 
 // things to do
@@ -186,7 +189,14 @@ function md (ast, id) {
       listItemIndent: 'one',
       resourceLink: true,
       rule: '-',
-      extensions: [frontmatterToMarkdown(['yaml'])],
+      extensions: [
+        frontmatterToMarkdown(['yaml']),
+        // {
+        //   handlers: {
+        //     nestedContent,
+        //   },
+        // },
+      ],
     });
   }
   catch (err) {
@@ -211,8 +221,16 @@ function heading (depth, value) {
 }
 
 function paragraph (children) {
+  if (!Array.isArray(children)) children = [children];
   return {
     type: 'paragraph',
+    children,
+  };
+}
+
+function blockquote (children) {
+  return {
+    type: 'blockquote',
     children,
   };
 }
@@ -231,3 +249,18 @@ function frontmatter (data) {
     value: stringify(data).replace(/\n+$/, ''),
   }
 }
+
+function html (value) {
+  return {
+    type: 'html',
+    value,
+  }
+}
+
+// function nestedContent (node, _, state) {
+//   const exit = state.enter(node.type);
+//   let value = '';
+
+//   exit();
+//   return value;
+// }
