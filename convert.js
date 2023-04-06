@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { toMarkdown } from 'mdast-util-to-markdown';
 import { frontmatterToMarkdown } from 'mdast-util-frontmatter';
+import { gfmToMarkdown } from 'mdast-util-gfm';
 import { stringify } from 'yaml'
 import makeRel from './lib/rel.js';
 import loadJSON from './lib/load-json.js';
@@ -36,6 +37,7 @@ async function makePage (p) {
         .entries(page.properties)
         .map(([k, v]) => {
           if (k === 'title' || !schemata[page.parent_id][k]?.niceName) return false;
+          // XXX we are losing markdown in eg. description (see Valls)
           obj[schemata[page.parent_id][k].niceName] = md(root(mdText(v))).replace(/\n+$/, '');
         })
       ;
@@ -97,17 +99,39 @@ async function makeCollection (c) {
 //  - [ ] "eoi": embedded object [ "‣", [ [ "eoi", "c452d50b-02cd-4a43-a51e-269c8fc496c2" ] ] ]
 // * decoration, these form lists like [ "The Separation of Platforms and Commerce", [ [ "i" ], [ "a", "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=3180174" ] ] ]
 //  - [ ] "a": URL link [ "https://twitter.com/schock/status/1524840701749501958", [ [ "a", "https://twitter.com/schock/status/1524840701749501958" ] ] ]
-//  - [ ] "i": italics
-//  - [ ] "b": bold
+//  - [x] "i": italics
+//  - [x] "b": bold
 //  - [ ] "_": underline
 //  - [ ] "h": text color [ " on the first machines.", [ [ "h", "red" ] ] ],
 //  - [ ] "m": comment [ "^", [ [ "m", "a1d53b4f-184e-4346-9431-431224c6e298" ] ] ],
-//  - [ ] "c": code [ "Nihilism and Technology", [ [ "c" ] ] ]
-//  - [ ] "s": strikethrough
+//  - [x] "c": code [ "Nihilism and Technology", [ [ "c" ] ] ]
+//  - [x] "s": strikethrough
 function mdText (v = []) {
   return v.map(([txt, meta]) => {
     if (!txt) return false;
     if (!meta) return text(txt);
+    if (txt === '‣') {
+      // p, d, eoi
+    }
+    if (txt === '⁍') {
+      // e
+    }
+    let prev = text(txt);
+    // need to make sure code comes first because it can't do text
+    meta
+      .sort(([a], [b]) => {
+        if (a === 'c' && b !== 'c') return -1;
+        if (a !== 'c' && b === 'c') return 1;
+        return 0;
+      })
+      .forEach(([deco, prm]) => {
+        if (deco === 'i') prev = em(prev);
+        else if (deco === 'b') prev = strong(prev);
+        else if (deco === 'c') prev = inlineCode(txt); // get the text
+        else if (deco === 's') prev = strike(prev);
+      })
+    ;
+    return prev;
     // XXX
     //  - for "decoration" meta, pile them deeper in order to nest them as children with eventually the text in there
     //  - for "indirection" meta, links and such, generate the text and create the right structure
@@ -122,7 +146,6 @@ function text (value) {
 //  - [ ] "page",
 //  - [ ] "bulleted_list",
 //  - [ ] "to_do",
-//  - [ ] "quote",
 //  - [ ] "numbered_list",
 //  - [ ] "image",
 //  - [ ] "transclusion_container",
@@ -192,6 +215,7 @@ function md (ast, id) {
       rule: '-',
       extensions: [
         frontmatterToMarkdown(['yaml']),
+        gfmToMarkdown(),
         // {
         //   handlers: {
         //     nestedContent,
@@ -223,40 +247,29 @@ function heading (depth, children) {
   };
 }
 
-function paragraph (children) {
+function typeAndChildren (type, children) {
   if (!Array.isArray(children)) children = [children];
-  return {
-    type: 'paragraph',
-    children,
-  };
+  return { type, children };
 }
 
-function blockquote (children) {
-  if (!Array.isArray(children)) children = [children];
-  return {
-    type: 'blockquote',
-    children,
-  };
+function typeAndValue (type, value) {
+  return { type, value };
 }
+
+function paragraph (children) { return typeAndChildren('paragraph', children); }
+function blockquote (children) { return typeAndChildren('blockquote', children); }
+function em (children) { return typeAndChildren('emphasis', children); }
+function strong (children) { return typeAndChildren('strong', children); }
+function strike (children) { return typeAndChildren('delete', children); }
+
+function inlineCode (value) { return typeAndValue('inlineCode', value); }
+// function html (value) { return typeAndValue('html', value); }
+function frontmatter (value) { return typeAndValue('yaml', stringify(value).replace(/\n+$/, '')); }
 
 function code (lang, value) {
   return {
     type: 'code',
     lang,
-    value,
-  };
-}
-
-function frontmatter (data) {
-  return {
-    type: 'yaml',
-    value: stringify(data).replace(/\n+$/, ''),
-  };
-}
-
-function html (value) {
-  return {
-    type: 'html',
     value,
   };
 }
