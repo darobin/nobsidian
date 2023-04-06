@@ -123,7 +123,6 @@ function text (value) {
 //  - [ ] "bulleted_list",
 //  - [ ] "to_do",
 //  - [ ] "quote",
-//  - [ ] "header",
 //  - [ ] "numbered_list",
 //  - [ ] "image",
 //  - [ ] "transclusion_container",
@@ -131,8 +130,6 @@ function text (value) {
 //  - [ ] "tweet",
 //  - [ ] "code",
 //  - [ ] "table_of_contents",
-//  - [ ] "sub_sub_header",
-//  - [ ] "sub_header",
 //  - [ ] "divider",
 //  - [ ] "transclusion_reference",
 //  - [ ] "alias",
@@ -157,6 +154,10 @@ async function makeBlock (b) {
     }
     return p;
   }
+  if (type === 'header') return heading(1, mdText(block.properties?.title));
+  if (type === 'sub_header') return heading(2, mdText(block.properties?.title));
+  if (type === 'sub_sub_header') return heading(3, mdText(block.properties?.title));
+  if (type === 'divider') return hr();
 
   // console.warn(`Unexpected type in makeBlock: ${type} (${id})`);
 }
@@ -212,11 +213,12 @@ function root (children = []) {
   };
 }
 
-function heading (depth, value) {
+function heading (depth, children) {
+  if (typeof children === 'string') children = [text(children)];
   return {
     type: 'heading',
     depth,
-    children: [{ type: 'text', value }],
+    children,
   };
 }
 
@@ -247,20 +249,16 @@ function frontmatter (data) {
   return {
     type: 'yaml',
     value: stringify(data).replace(/\n+$/, ''),
-  }
+  };
 }
 
 function html (value) {
   return {
     type: 'html',
     value,
-  }
+  };
 }
 
-// function nestedContent (node, _, state) {
-//   const exit = state.enter(node.type);
-//   let value = '';
-
-//   exit();
-//   return value;
-// }
+function hr () {
+  return { type: 'thematicBreak' };
+}
