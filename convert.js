@@ -130,7 +130,6 @@ function text (value) {
 //  - [ ] "tweet",
 //  - [ ] "code",
 //  - [ ] "table_of_contents",
-//  - [ ] "divider",
 //  - [ ] "transclusion_reference",
 //  - [ ] "alias",
 //  - [ ] "file",
@@ -158,6 +157,7 @@ async function makeBlock (b) {
   if (type === 'sub_header') return heading(2, mdText(block.properties?.title));
   if (type === 'sub_sub_header') return heading(3, mdText(block.properties?.title));
   if (type === 'divider') return hr();
+  if (type === 'quote') return blockquote([paragraph(mdText(block.properties?.title))]);
 
   // console.warn(`Unexpected type in makeBlock: ${type} (${id})`);
 }
@@ -207,6 +207,7 @@ function md (ast, id) {
 }
 
 function root (children = []) {
+  if (!Array.isArray(children)) children = [children];
   return {
     type: 'root',
     children,
@@ -231,6 +232,7 @@ function paragraph (children) {
 }
 
 function blockquote (children) {
+  if (!Array.isArray(children)) children = [children];
   return {
     type: 'blockquote',
     children,
