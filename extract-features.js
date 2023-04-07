@@ -4,6 +4,9 @@ import { join } from 'node:path';
 import makeRel from './lib/rel.js';
 import loadJSON from './lib/load-json.js';
 import saveJSON from './lib/save-json.js';
+import { textify } from './lib/textify.js';
+import { ancestryAndSelf } from './lib/ancestry.js';
+import { traceParentPath } from './lib/trace-parents.js';
 
 const rel = makeRel(import.meta.url);
 const dataDir = rel('data');
@@ -28,7 +31,7 @@ Object.entries(bigIndex.block).forEach(([k, v]) => {
     return;
   }
   let deadAncestor = false;
-  ancestryAndSelf(v).forEach(n => {
+  ancestryAndSelf(v, bigIndex).forEach(n => {
     let { type = 'collection', id, alive } = n;
     if (type !== 'collection') type = 'block';
     if (!id) {
@@ -94,7 +97,7 @@ await saveJSON(join(dataDir, 'text-values.json'), [...textValues]);
 [...Object.values(bigIndex.collection), ...(Object.values(bigIndex.block).filter(n => n.value.type === 'page' && n.value.properties?.title))]
 .filter(n => n.value.space_id === spaceId)
 .forEach(root => {
-  let parentPath = traceParentPath(root);
+  let parentPath = traceParentPath(root, bigIndex);
   paths.add(parentPath);
 });
 await saveJSON(join(dataDir, 'all-paths.json'), [...paths]);
@@ -161,12 +164,12 @@ function getBlock (id) {
   };
   if (b.type === 'page') {
     block.icon = b.format?.page_icon;
-    block.title = textify(b.properties?.title);
-    block.path = traceParentPath(blk);
+    block.title = textify(b.properties?.title, bigIndex);
+    block.path = traceParentPath(blk, bigIndex);
   }
   else if (b.type === 'collection_view_page' || b.type === 'collection_view') {
     block.icon = b.format?.page_icon;
-    block.title = textify(b.properties?.title);
+    block.title = textify(b.properties?.title, bigIndex);
     if (b.collection_id) block.collection = getCollection(b.collection_id, b.view_ids);
   }
   else if (b.type === 'table') {
@@ -174,7 +177,7 @@ function getBlock (id) {
   }
   else if (b.type === 'image' || b.type === 'file' || b.type === 'video' || b.type === 'pdf') {
     block.source = b.properties?.source?.[0]?.[0];
-    block.title = textify(b.properties?.title);
+    block.title = textify(b.properties?.title, bigIndex);
     block.fileIDs = b.file_ids;
   }
   else if (b.type === 'tweet') {
@@ -184,7 +187,7 @@ function getBlock (id) {
   else if (b.type === 'callout') {
     block.icon = b.format?.page_icon;
     block.colour = b.format?.block_color;
-    block.title = textify(b.properties?.title);
+    block.title = textify(b.properties?.title, bigIndex);
   }
   else if (b.type === 'transclusion_reference') {
     block.pointer = b.format?.transclusion_reference_pointer?.id;
@@ -216,8 +219,8 @@ function getCollection (id, viewIDs) {
   const ret = {
     id: c.id,
     type: 'collection',
-    name: textify(c.name),
-    path: traceParentPath(col),
+    name: textify(c.name, bigIndex),
+    path: traceParentPath(col, bigIndex),
   };
   let hasQueryView = true;
   (viewIDs || []).forEach(vid => {
@@ -270,84 +273,7 @@ function getReaction (id) {
   };
 }
 
-function textify (text) {
-  return (text || [])
-    .map(([txt, meta]) => {
-      if (!meta || !meta.find(cmd => cmd.length > 1)) return txt;
-      if (txt === '⁍') {
-        const [cmd, content] = meta[0];
-        if (cmd === 'e') {
-          return content
-            .replace(/\\mathrm\{P\}/g, '𝖯')
-            .replace(/\\mathrm\{Q\}/g, '𝖰')
-            .replace(/\\mathrm\{x\}/g, '𝑥')
-            .replace(/\\mathrm\{A\}/g, '𝖠')
-            .replace(/\\mathrm\{P\(x\)\}/g, '𝖯(𝑥)')
-            .replace(/\\implies/g, '⟹')
-            .replace(/\\land/g, '∧')
-            .replace(/\\lor/g, '∨')
-            .replace(/\\forall/g, '∀')
-            .replace(/\\exists/g, '∃')
-            .replace(/\\neg/g, '¬')
-            .replace(/\\in/g, '∈')
-          ;
-        }
-        else return console.warn(`UKNOWN CMD ${cmd}`);
-      }
-      if (txt === '‣') {
-        const [cmd, id] = meta[0];
-        if (cmd === 'p') {
-          const node = bigIndex.block[id];
-          return textify(node.value?.properties?.title, bigIndex);
-        }
-        else return console.warn(`UKNOWN CMD ${cmd}`);
-      }
-    })
-    .join('')
-  ;
-}
-
 function prune (arr) {
   if (arr && !arr.length) return undefined;
   return arr;
-}
-
-function ancestryAndSelf (root) {
-  const parents = [root.value];
-  let curNode = root.value;
-  while (curNode?.parent_table && curNode.parent_id) {
-    const { parent_table: pTable, parent_id: pId } = curNode;
-    if (pTable === 'space' || pTable === 'team') break;
-    if (!bigIndex[pTable][pId]) console.warn(`NOT FOUND ${pTable}/${pId} for ${curNode.id}`);
-    curNode = bigIndex[pTable][pId].value;
-    parents.unshift(curNode);
-  }
-  return parents;
-}
-
-function traceParentPath (root) {
-  const parents = ancestryAndSelf(root)
-  let lastType;
-  // console.warn(`* ${parents.length} depth: ${JSON.stringify(parents.map(p => p.id))}`);
-  let parentPath = join(
-    ...(parents
-      .map(obj => {
-        const { type } = obj;
-        lastType = type || 'collection';
-        if (type === 'collection_view_page') return;
-        if (type === 'page') return sanitiseFileName(textify(obj.properties?.title, bigIndex));
-        if (!type && obj.name) return sanitiseFileName(textify(obj.name, bigIndex));
-      })
-      .filter(Boolean))
-  );
-  parentPath += (lastType === 'collection') ? '/' : '.md';
-  return parentPath;
-}
-
-function sanitiseFileName (str) {
-  if (/[\\]/.test(str)) console.warn(str);
-  return str
-    .replace(/:/g, '：') // full-width colon
-    .replace(/\//g, '／') // full-width solidus
-  ;
 }

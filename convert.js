@@ -5,7 +5,9 @@ import { toMarkdown } from 'mdast-util-to-markdown';
 import { frontmatterToMarkdown } from 'mdast-util-frontmatter';
 import { gfmToMarkdown } from 'mdast-util-gfm';
 import { mathToMarkdown } from 'mdast-util-math';
+import { toMarkdown as wikiToMarkdown } from 'mdast-util-wiki-link';
 import { stringify } from 'yaml'
+import { traceParentPath } from './lib/trace-parents.js';
 import makeRel from './lib/rel.js';
 import loadJSON from './lib/load-json.js';
 
@@ -94,9 +96,9 @@ async function makeCollection (c) {
 
 // TEXT TYPES
 // * indirection
-//  - [ ] "p": internal link [ "‣", [ [ "p", "206e9f49-65c1-4c75-87de-ac2fe661d496", "fb3fbef6-0b34-462f-b235-627e17f7d72d" ] ] ],
+//  - [x] "p": internal link [ "‣", [ [ "p", "206e9f49-65c1-4c75-87de-ac2fe661d496", "fb3fbef6-0b34-462f-b235-627e17f7d72d" ] ] ],
 //  - [ ] "e": embedded math inline [ "⁍", [ [ "e", "\\mathit{x}" ] ] ]
-//  - [ ] "d": date [ "‣", [ [ "d", { "type": "date", "start_date": "2021-08-14" } ] ] ]
+//  - [x] "d": date [ "‣", [ [ "d", { "type": "date", "start_date": "2021-08-14" } ] ] ]
 //  - [ ] "eoi": embedded object [ "‣", [ [ "eoi", "c452d50b-02cd-4a43-a51e-269c8fc496c2" ] ] ]
 // * decoration, these form lists like [ "The Separation of Platforms and Commerce", [ [ "i" ], [ "a", "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=3180174" ] ] ]
 //  - [x] "a": URL link [ "https://twitter.com/schock/status/1524840701749501958", [ [ "a", "https://twitter.com/schock/status/1524840701749501958" ] ] ]
@@ -112,7 +114,19 @@ function mdText (v = []) {
     if (!txt) return false;
     if (!meta) return text(txt);
     if (txt === '‣') {
-      // p, d, eoi
+      const [deco, prm] = meta[0];
+      if (deco === 'p') {
+        const node = bigIndex.block[prm] || bigIndex.collection[prm];
+        const link = traceParentPath(node, bigIndex, true);
+        const alias = link.replace(/^.*\//, '');
+        return wikiLink(link, alias);
+      }
+      if (deco === 'd') return text(prm.start_date);
+      if (deco === 'eoi') {
+        const url = bigIndex.block[prm]?.format?.original_url;
+        if (!url) return;
+        return link(url, text(url));
+      }
     }
     else if (txt === '⁍') {
       const [deco, prm] = meta[0];
@@ -136,6 +150,7 @@ function mdText (v = []) {
           else if (deco === 'b') prev = strong(prev);
           else if (deco === 'c') prev = inlineCode(txt); // get the text
           else if (deco === 's') prev = strike(prev);
+          // XXX underlines are acting up, see Category Theory
           else if (deco === '_') prev = [html('<u>'), prev, html('</u>')];
           else if (deco === 'h') prev = [html(`<span style="color: ${prm};">`), prev, html('</span>')];
           else if (deco === 'a') prev = link(prm, prev);
@@ -233,6 +248,7 @@ function md (ast, id) {
         frontmatterToMarkdown(['yaml']),
         gfmToMarkdown(),
         mathToMarkdown(),
+        wikiToMarkdown({ aliasDivider: '|' }),
       ],
     });
   }
@@ -278,6 +294,16 @@ function inlineCode (value) { return typeAndValue('inlineCode', value); }
 function inlineMath (value) { return typeAndValue('inlineMath', value); }
 function html (value) { return typeAndValue('html', value); }
 function frontmatter (value) { return typeAndValue('yaml', stringify(value).replace(/\n+$/, '')); }
+
+function wikiLink (value, alias) {
+  return {
+    type: 'wikiLink',
+    value,
+    data: {
+      alias,
+    },
+  };
+}
 
 function code (lang, value) {
   return {
