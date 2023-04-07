@@ -46,7 +46,9 @@ async function makePage (p) {
       ;
       ast.children.push(frontmatter(obj));
     }
-    await recurseBlocks(content, ast.children);
+    const ctx = { fnCount: 0, footnotes: [] };
+    await recurseBlocks(content, ast.children, ctx);
+    if (ctx.fnCount) ast.children.push(...ctx.footnotes);
     await writeFile(join(obsidianVault, p.path), md(ast, id));
     return;
   }
@@ -87,6 +89,7 @@ async function makeCollection (c) {
 // - walk:
 //    - collections
 //    - pages
+//    - discusssions, these may be attached to a page (and maybe to a block) without being anchored in the text
 // - create index for collections, plus a query for each view
 // - when there is more than one view, process both but keep track of what each view has processed to not do it twice
 // - use the data thing to set data on pages that have a collection as their parent
@@ -97,7 +100,7 @@ async function makeCollection (c) {
 // TEXT TYPES
 // * indirection
 //  - [x] "p": internal link [ "‣", [ [ "p", "206e9f49-65c1-4c75-87de-ac2fe661d496", "fb3fbef6-0b34-462f-b235-627e17f7d72d" ] ] ],
-//  - [ ] "e": embedded math inline [ "⁍", [ [ "e", "\\mathit{x}" ] ] ]
+//  - [x] "e": embedded math inline [ "⁍", [ [ "e", "\\mathit{x}" ] ] ]
 //  - [x] "d": date [ "‣", [ [ "d", { "type": "date", "start_date": "2021-08-14" } ] ] ]
 //  - [ ] "eoi": embedded object [ "‣", [ [ "eoi", "c452d50b-02cd-4a43-a51e-269c8fc496c2" ] ] ]
 // * decoration, these form lists like [ "The Separation of Platforms and Commerce", [ [ "i" ], [ "a", "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=3180174" ] ] ]
@@ -106,40 +109,86 @@ async function makeCollection (c) {
 //  - [x] "b": bold
 //  - [x] "_": underline
 //  - [x] "h": text color [ " on the first machines.", [ [ "h", "red" ] ] ],
-//  - [ ] "m": comment [ "^", [ [ "m", "a1d53b4f-184e-4346-9431-431224c6e298" ] ] ],
+//  - [x] "m": comment [ "^", [ [ "m", "a1d53b4f-184e-4346-9431-431224c6e298" ] ] ],
 //  - [x] "c": code [ "Nihilism and Technology", [ [ "c" ] ] ]
 //  - [x] "s": strikethrough
-function mdText (v = []) {
-  const chunks = v.map(([txt, meta]) => {
+function mdText (v = [], ctx) {
+  // text can contain \n which we should convert to breaks
+  let parts = [];
+  v.forEach(([txt, meta]) => {
+    const parsed = (txt || '').split(/(\n)/).filter(it => it !== '');
+    if (parsed.length <= 1) return parts.push([txt, meta].filter(Boolean));
+    parsed.forEach(p => {
+      if (p === '\n') parts.push([p, ['BREAK']]);
+      else parts.push([p, meta ? JSON.parse(JSON.stringify(meta)) : undefined].filter(Boolean));
+    });
+  })
+  // comments get repeated for each chunk, so we have to remove repetitions
+  const seenComment = new Set();
+  parts = parts
+    .reverse()
+    .map(([txt, meta]) => {
+      if (typeof txt === 'undefined') return [];
+      if (!meta) return [txt];
+      const m = meta.find(it => it[0] === 'm');
+      if (!m) return [txt, meta];
+      if (!seenComment.has(m[1])) {
+        seenComment.add(m[1]);
+        return [txt, meta];
+      }
+      return [txt, meta.filter(it => it[0] !== 'm')];
+    })
+    .reverse()
+  ;
+  const chunks = parts.map(([txt, meta]) => {
     if (!txt) return false;
     if (!meta) return text(txt);
     if (txt === '‣') {
       const [deco, prm] = meta[0];
+      let ret;
       if (deco === 'p') {
         const node = bigIndex.block[prm] || bigIndex.collection[prm];
         const link = traceParentPath(node, bigIndex, true);
         const alias = link.replace(/^.*\//, '');
-        return wikiLink(link, alias);
+        ret = wikiLink(link, alias);
       }
       if (deco === 'd') return text(prm.start_date);
       if (deco === 'eoi') {
         const url = bigIndex.block[prm]?.format?.original_url;
         if (!url) return;
-        return link(url, text(url));
+        ret = link(url, text(url));
       }
-    }
+      if (meta.length > 1 && meta[1][0] === 'm') {
+        const ref = makeFootnote(meta[1][1], ctx);
+        return [ret, ref];
+      }
+      return ret;
+  }
     else if (txt === '⁍') {
       const [deco, prm] = meta[0];
-      // XXX
-      // need to fix the math for Katex -> MathJax conversion
-      // use https://github.com/wei2912/obsidian-latex and something like https://github.com/JeppeKlitgaard/TexPreambles/blob/master/mathjax_preamble.sty
-      // to define what isn't (like rarr, empty, N.)
-      if (deco === 'e') return inlineMath(prm);
+      if (deco === 'e') {
+        const ret = inlineMath(prm);
+        if (meta.length > 1 && meta[1][0] === 'm') {
+          const ref = makeFootnote(meta[1][1], ctx);
+          return [ret, ref];
+        }
+        return ret;
+      }
+    }
+    else if (txt === '\n' && meta?.[0] === 'BREAK') {
+      return br();
     }
     else {
       let prev = text(txt);
-      // need to make sure code comes first because it can't do text
+      const seenDeco = new Set();
       meta
+        // there's some really weird stuff where notion will repeat the same command plenty of times
+        .filter(([deco]) => {
+          if (seenDeco.has(deco)) return false;
+          seenDeco.add(deco);
+          return true;
+        })
+        // need to make sure code comes first because it can't do text
         .sort(([a], [b]) => {
           if (a === 'c' && b !== 'c') return -1;
           if (a !== 'c' && b === 'c') return 1;
@@ -150,17 +199,18 @@ function mdText (v = []) {
           else if (deco === 'b') prev = strong(prev);
           else if (deco === 'c') prev = inlineCode(txt); // get the text
           else if (deco === 's') prev = strike(prev);
-          // XXX underlines are acting up, see Category Theory
           else if (deco === '_') prev = [html('<u>'), prev, html('</u>')];
           else if (deco === 'h') prev = [html(`<span style="color: ${prm};">`), prev, html('</span>')];
           else if (deco === 'a') prev = link(prm, prev);
+          else if (deco === 'm') {
+            const ref = makeFootnote(prm, ctx);
+            if (txt === '^') prev = [ref];
+            else prev = [...(Array.isArray(prev) ? prev : [prev]), ref];
+          }
         })
       ;
       return prev;
     }
-    // XXX
-    //  - for "decoration" meta, pile them deeper in order to nest them as children with eventually the text in there
-    //  - for "indirection" meta, links and such, generate the text and create the right structure
   }).filter(Boolean);
   const ret = [];
   chunks.forEach(chunk => {
@@ -171,6 +221,30 @@ function mdText (v = []) {
 
 function text (value) {
   return { type: 'text', value };
+}
+
+function makeFootnote (id, ctx) {
+  ctx.fnCount++;
+  const disc = bigIndex.discussion[id]?.value;
+  const children = disc.comments.map(cid => {
+    const cmt = bigIndex.comment[cid].value;
+    return paragraph(mdText(cmt.text, ctx));
+  });
+  if (disc.resolved) children.unshift(paragraph(text('#resolved ')));
+
+  const identifier = String(ctx.fnCount);
+  ctx.footnotes.push({
+    type: 'footnoteDefinition',
+    identifier,
+    label: identifier,
+    children,
+  });
+
+  return {
+    type: 'footnoteReference',
+    identifier,
+    label: identifier,
+  };
 }
 
 // BLOCK TYPES
@@ -195,30 +269,30 @@ function text (value) {
 //  - [ ] "table",
 //  - [ ] "table_row",
 //  - [ ] "pdf"
-async function makeBlock (b) {
+async function makeBlock (b, ctx) {
   const { id, type, content } = b;
   const block = bigIndex.block[id].value;
   if (type === 'text') {
-    const p = paragraph(mdText(block.properties?.title));
+    const p = paragraph(mdText(block.properties?.title, ctx));
     if (content) {
       const bq = [paragraph(text('(nobsidianNested::true)'))];
-      await recurseBlocks(content, bq);
+      await recurseBlocks(content, bq, ctx);
       return [p, blockquote(bq)];
     }
     return p;
   }
-  if (type === 'header') return heading(1, mdText(block.properties?.title));
-  if (type === 'sub_header') return heading(2, mdText(block.properties?.title));
-  if (type === 'sub_sub_header') return heading(3, mdText(block.properties?.title));
+  if (type === 'header') return heading(1, mdText(block.properties?.title, ctx));
+  if (type === 'sub_header') return heading(2, mdText(block.properties?.title, ctx));
+  if (type === 'sub_sub_header') return heading(3, mdText(block.properties?.title, ctx));
   if (type === 'divider') return hr();
-  if (type === 'quote') return blockquote([paragraph(mdText(block.properties?.title))]);
+  if (type === 'quote') return blockquote([paragraph(mdText(block.properties?.title, ctx))]);
 
   // console.warn(`Unexpected type in makeBlock: ${type} (${id})`);
 }
 
-async function recurseBlocks (content, parentChildren) {
+async function recurseBlocks (content, parentChildren, ctx) {
   for (const b of (content || [])) {
-    const child = await makeBlock(b);
+    const child = await makeBlock(b, ctx);
     if (child) parentChildren.push(...(Array.isArray(child) ? child : [child]));
   }
 }
@@ -254,6 +328,7 @@ function md (ast, id) {
   }
   catch (err) {
     console.warn(`Error in ${id}`);
+    console.log(JSON.stringify(ast, null, 2));
     console.error(err);
   }
 }
@@ -324,4 +399,8 @@ function link (url, children) {
 
 function hr () {
   return { type: 'thematicBreak' };
+}
+
+function br () {
+  return { type: 'break' };
 }
