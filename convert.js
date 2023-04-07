@@ -98,16 +98,16 @@ async function makeCollection (c) {
 //  - [ ] "d": date [ "‣", [ [ "d", { "type": "date", "start_date": "2021-08-14" } ] ] ]
 //  - [ ] "eoi": embedded object [ "‣", [ [ "eoi", "c452d50b-02cd-4a43-a51e-269c8fc496c2" ] ] ]
 // * decoration, these form lists like [ "The Separation of Platforms and Commerce", [ [ "i" ], [ "a", "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=3180174" ] ] ]
-//  - [ ] "a": URL link [ "https://twitter.com/schock/status/1524840701749501958", [ [ "a", "https://twitter.com/schock/status/1524840701749501958" ] ] ]
+//  - [x] "a": URL link [ "https://twitter.com/schock/status/1524840701749501958", [ [ "a", "https://twitter.com/schock/status/1524840701749501958" ] ] ]
 //  - [x] "i": italics
 //  - [x] "b": bold
-//  - [ ] "_": underline
-//  - [ ] "h": text color [ " on the first machines.", [ [ "h", "red" ] ] ],
+//  - [x] "_": underline
+//  - [x] "h": text color [ " on the first machines.", [ [ "h", "red" ] ] ],
 //  - [ ] "m": comment [ "^", [ [ "m", "a1d53b4f-184e-4346-9431-431224c6e298" ] ] ],
 //  - [x] "c": code [ "Nihilism and Technology", [ [ "c" ] ] ]
 //  - [x] "s": strikethrough
 function mdText (v = []) {
-  return v.map(([txt, meta]) => {
+  const chunks = v.map(([txt, meta]) => {
     if (!txt) return false;
     if (!meta) return text(txt);
     if (txt === '‣') {
@@ -129,6 +129,9 @@ function mdText (v = []) {
         else if (deco === 'b') prev = strong(prev);
         else if (deco === 'c') prev = inlineCode(txt); // get the text
         else if (deco === 's') prev = strike(prev);
+        else if (deco === '_') prev = [html('<u>'), prev, html('</u>')];
+        else if (deco === 'h') prev = [html(`<span style="color: ${prm};">`), prev, html('</span>')];
+        else if (deco === 'a') prev = link(prm, prev);
       })
     ;
     return prev;
@@ -136,6 +139,11 @@ function mdText (v = []) {
     //  - for "decoration" meta, pile them deeper in order to nest them as children with eventually the text in there
     //  - for "indirection" meta, links and such, generate the text and create the right structure
   }).filter(Boolean);
+  const ret = [];
+  chunks.forEach(chunk => {
+    ret.push(...(Array.isArray(chunk) ? chunk : [chunk]));
+  });
+  return ret;
 }
 
 function text (value) {
@@ -143,12 +151,12 @@ function text (value) {
 }
 
 // BLOCK TYPES
-//  - [ ] "page",
-//  - [ ] "bulleted_list",
+//  - [ ] "page", NOTE: this needs to include creating a link to a subpage and then iterating into that subpage
+//  - [ ] "bulleted_list", NOTE: when nesting happens, it will be in child nodes. so we can preprocess the tree to group lists first
 //  - [ ] "to_do",
 //  - [ ] "numbered_list",
 //  - [ ] "image",
-//  - [ ] "transclusion_container",
+//  - [ ] "transclusion_container", NOTE: for these, we should generate the transcluded content in a special file under transclusions/uuid.md (if not already there)
 //  - [ ] "callout",
 //  - [ ] "tweet",
 //  - [ ] "code",
@@ -263,7 +271,7 @@ function strong (children) { return typeAndChildren('strong', children); }
 function strike (children) { return typeAndChildren('delete', children); }
 
 function inlineCode (value) { return typeAndValue('inlineCode', value); }
-// function html (value) { return typeAndValue('html', value); }
+function html (value) { return typeAndValue('html', value); }
 function frontmatter (value) { return typeAndValue('yaml', stringify(value).replace(/\n+$/, '')); }
 
 function code (lang, value) {
@@ -271,6 +279,15 @@ function code (lang, value) {
     type: 'code',
     lang,
     value,
+  };
+}
+
+function link (url, children) {
+  if (!Array.isArray(children)) children = [children];
+  return {
+    type: 'link',
+    url,
+    children,
   };
 }
 
