@@ -4,6 +4,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { toMarkdown } from 'mdast-util-to-markdown';
 import { frontmatterToMarkdown } from 'mdast-util-frontmatter';
 import { gfmToMarkdown } from 'mdast-util-gfm';
+import { mathToMarkdown } from 'mdast-util-math';
 import { stringify } from 'yaml'
 import makeRel from './lib/rel.js';
 import loadJSON from './lib/load-json.js';
@@ -113,28 +114,35 @@ function mdText (v = []) {
     if (txt === '‣') {
       // p, d, eoi
     }
-    if (txt === '⁍') {
-      // e
+    else if (txt === '⁍') {
+      const [deco, prm] = meta[0];
+      // XXX
+      // need to fix the math for Katex -> MathJax conversion
+      // use https://github.com/wei2912/obsidian-latex and something like https://github.com/JeppeKlitgaard/TexPreambles/blob/master/mathjax_preamble.sty
+      // to define what isn't (like rarr, empty, N.)
+      if (deco === 'e') return inlineMath(prm);
     }
-    let prev = text(txt);
-    // need to make sure code comes first because it can't do text
-    meta
-      .sort(([a], [b]) => {
-        if (a === 'c' && b !== 'c') return -1;
-        if (a !== 'c' && b === 'c') return 1;
-        return 0;
-      })
-      .forEach(([deco, prm]) => {
-        if (deco === 'i') prev = em(prev);
-        else if (deco === 'b') prev = strong(prev);
-        else if (deco === 'c') prev = inlineCode(txt); // get the text
-        else if (deco === 's') prev = strike(prev);
-        else if (deco === '_') prev = [html('<u>'), prev, html('</u>')];
-        else if (deco === 'h') prev = [html(`<span style="color: ${prm};">`), prev, html('</span>')];
-        else if (deco === 'a') prev = link(prm, prev);
-      })
-    ;
-    return prev;
+    else {
+      let prev = text(txt);
+      // need to make sure code comes first because it can't do text
+      meta
+        .sort(([a], [b]) => {
+          if (a === 'c' && b !== 'c') return -1;
+          if (a !== 'c' && b === 'c') return 1;
+          return 0;
+        })
+        .forEach(([deco, prm]) => {
+          if (deco === 'i') prev = em(prev);
+          else if (deco === 'b') prev = strong(prev);
+          else if (deco === 'c') prev = inlineCode(txt); // get the text
+          else if (deco === 's') prev = strike(prev);
+          else if (deco === '_') prev = [html('<u>'), prev, html('</u>')];
+          else if (deco === 'h') prev = [html(`<span style="color: ${prm};">`), prev, html('</span>')];
+          else if (deco === 'a') prev = link(prm, prev);
+        })
+      ;
+      return prev;
+    }
     // XXX
     //  - for "decoration" meta, pile them deeper in order to nest them as children with eventually the text in there
     //  - for "indirection" meta, links and such, generate the text and create the right structure
@@ -224,11 +232,7 @@ function md (ast, id) {
       extensions: [
         frontmatterToMarkdown(['yaml']),
         gfmToMarkdown(),
-        // {
-        //   handlers: {
-        //     nestedContent,
-        //   },
-        // },
+        mathToMarkdown(),
       ],
     });
   }
@@ -271,6 +275,7 @@ function strong (children) { return typeAndChildren('strong', children); }
 function strike (children) { return typeAndChildren('delete', children); }
 
 function inlineCode (value) { return typeAndValue('inlineCode', value); }
+function inlineMath (value) { return typeAndValue('inlineMath', value); }
 function html (value) { return typeAndValue('html', value); }
 function frontmatter (value) { return typeAndValue('yaml', stringify(value).replace(/\n+$/, '')); }
 
