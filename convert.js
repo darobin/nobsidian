@@ -8,6 +8,7 @@ import { mathToMarkdown } from 'mdast-util-math';
 import { toMarkdown as wikiToMarkdown } from 'mdast-util-wiki-link';
 import { stringify } from 'yaml'
 import { traceParentPath } from './lib/trace-parents.js';
+import { textify } from './lib/textify.js';
 import makeRel from './lib/rel.js';
 import loadJSON from './lib/load-json.js';
 
@@ -23,25 +24,13 @@ for (const page of tree.space.pages) {
   await makePage(page);
 }
 
-// XXX
-//  - insert an h1 with the *real* title, and simplify filename cleanup
-//  - make a plugin that differentiates title from file name:
-//    - making the fn less prominent
-//    - making wikilinks *always* insert [[path|title]]
-//    - updating wikilinks across the board when EITHER path or heading updates
-
-
 async function makePage (p) {
   const { id, type, content } = p;
   if (type === 'copy_indicator') return;
   if (type === 'collection_view_page' || type === 'collection_view') return await makeCollection(p.collection);
   if (type === 'page') {
-    // we ignore the title because Obsidian uses the file name for that
     const ast = root();
     const page = bigIndex.block[id].value;
-    // XXX HERE
-    // the output is kind of there, but broken
-    // after that, do mdText()
     if (page.parent_table === 'collection' && page.properties && schemata[page.parent_id]) {
       const obj = {};
       Object
@@ -149,7 +138,8 @@ function mdText (v = [], ctx) {
       if (deco === 'p') {
         const node = bigIndex.block[prm] || bigIndex.collection[prm];
         const link = traceParentPath(node, bigIndex, true);
-        const alias = link.replace(/^.*\//, '');
+        // const alias = link.replace(/^.*\//, '');
+        const alias = textify(node.value?.properties?.title || node.value?.name) || link.replace(/^.*\//, '');
         ret = wikiLink(link, alias);
       }
       if (deco === 'd') return text(prm.start_date);
@@ -324,7 +314,11 @@ function md (ast, id) {
         mathToMarkdown(),
         wikiToMarkdown({ aliasDivider: '|' }),
       ],
-    }).replaceAll('&#x20;', ' ');
+    })
+    // we remove a number of escapes, here trailing spaces
+    .replaceAll('&#x20;', ' ')
+    .replace(/(\[\[.+?\]\])/g, (_, m) => m.replace(/\\_/g, '_'))
+    ;
   }
   catch (err) {
     console.warn(`Error in ${id}`);
