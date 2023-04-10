@@ -139,18 +139,6 @@ await saveJSON(join(dataDir, 'tweets.json'), [...tweets]);
   console.warn(`${missing.length} missing.`);
 });
 
-// XXX
-// things we want to extract:
-//  - [x] all block types, including callout types (they get an icon and background in the format)
-//  - [x] all text values from block properties.title, collection name, comment text
-//  - [x] all text types
-//  - [x] all block formats
-//  - [x] all paths & file names (list of parents with title/name)
-//  - [x] a tree of everyting with just type and children (starting from the space, and checking that everything gets touched at least once)
-//  - [x] all attached files should be downloaded as UUID/filename (get-files scritp)
-//  - [x] where is the reaction from
-//  - [x] all tweets
-
 function getBlock (id) {
   seenIDs.add(id);
   if (!bigIndex.block[id]) return console.warn(`Block ${id} not found`);

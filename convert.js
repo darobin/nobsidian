@@ -23,6 +23,14 @@ for (const page of tree.space.pages) {
   await makePage(page);
 }
 
+// XXX
+//  - insert an h1 with the *real* title, and simplify filename cleanup
+//  - make a plugin that differentiates title from file name:
+//    - making the fn less prominent
+//    - making wikilinks *always* insert [[path|title]]
+//    - updating wikilinks across the board when EITHER path or heading updates
+
+
 async function makePage (p) {
   const { id, type, content } = p;
   if (type === 'copy_indicator') return;
@@ -47,6 +55,7 @@ async function makePage (p) {
       ast.children.push(frontmatter(obj));
     }
     const ctx = { fnCount: 0, footnotes: [] };
+    ast.children.push(heading(1, mdText(page.properties?.title || page.name, ctx)));
     await recurseBlocks(content, ast.children, ctx);
     if (ctx.fnCount) ast.children.push(...ctx.footnotes);
     await writeFile(join(obsidianVault, p.path), md(ast, id));
@@ -103,15 +112,6 @@ async function makeCollection (c) {
 //  - [x] "e": embedded math inline [ "⁍", [ [ "e", "\\mathit{x}" ] ] ]
 //  - [x] "d": date [ "‣", [ [ "d", { "type": "date", "start_date": "2021-08-14" } ] ] ]
 //  - [ ] "eoi": embedded object [ "‣", [ [ "eoi", "c452d50b-02cd-4a43-a51e-269c8fc496c2" ] ] ]
-// * decoration, these form lists like [ "The Separation of Platforms and Commerce", [ [ "i" ], [ "a", "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=3180174" ] ] ]
-//  - [x] "a": URL link [ "https://twitter.com/schock/status/1524840701749501958", [ [ "a", "https://twitter.com/schock/status/1524840701749501958" ] ] ]
-//  - [x] "i": italics
-//  - [x] "b": bold
-//  - [x] "_": underline
-//  - [x] "h": text color [ " on the first machines.", [ [ "h", "red" ] ] ],
-//  - [x] "m": comment [ "^", [ [ "m", "a1d53b4f-184e-4346-9431-431224c6e298" ] ] ],
-//  - [x] "c": code [ "Nihilism and Technology", [ [ "c" ] ] ]
-//  - [x] "s": strikethrough
 function mdText (v = [], ctx) {
   // text can contain \n which we should convert to breaks
   let parts = [];
@@ -324,21 +324,13 @@ function md (ast, id) {
         mathToMarkdown(),
         wikiToMarkdown({ aliasDivider: '|' }),
       ],
-    });
+    }).replaceAll('&#x20;', ' ');
   }
   catch (err) {
     console.warn(`Error in ${id}`);
     console.log(JSON.stringify(ast, null, 2));
     console.error(err);
   }
-}
-
-function root (children = []) {
-  if (!Array.isArray(children)) children = [children];
-  return {
-    type: 'root',
-    children,
-  };
 }
 
 function heading (depth, children) {
@@ -351,6 +343,7 @@ function heading (depth, children) {
 }
 
 function typeAndChildren (type, children) {
+  if (!children) children = [];
   if (!Array.isArray(children)) children = [children];
   return { type, children };
 }
@@ -359,6 +352,7 @@ function typeAndValue (type, value) {
   return { type, value };
 }
 
+function root (children) { return typeAndChildren('root', children); }
 function paragraph (children) { return typeAndChildren('paragraph', children); }
 function blockquote (children) { return typeAndChildren('blockquote', children); }
 function em (children) { return typeAndChildren('emphasis', children); }
