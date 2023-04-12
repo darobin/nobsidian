@@ -1,5 +1,5 @@
 
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { toMarkdown } from 'mdast-util-to-markdown';
 import { frontmatterToMarkdown } from 'mdast-util-frontmatter';
@@ -47,7 +47,9 @@ async function makePage (p) {
     ast.children.push(heading(1, mdText(page.properties?.title || page.name, ctx)));
     await recurseBlocks(content, ast.children, ctx);
     if (ctx.fnCount) ast.children.push(...ctx.footnotes);
-    await writeFile(join(obsidianVault, p.path), md(ast, id));
+    const pagePath = join(obsidianVault, p.path);
+    await mkdir(dirname(pagePath), { recursive: true });
+    await writeFile(pagePath, md(ast, id));
     return;
   }
   console.warn(`Unexpected type in makePage: ${type} (${id})`);
@@ -238,7 +240,6 @@ function makeFootnote (id, ctx) {
 }
 
 // BLOCK TYPES
-//  - [ ] "page", NOTE: this needs to include creating a link to a subpage and then iterating into that subpage
 //  - [ ] "bulleted_list", NOTE: when nesting happens, it will be in child nodes. so we can preprocess the tree to group lists first
 //  - [ ] "to_do",
 //  - [ ] "numbered_list",
@@ -276,6 +277,12 @@ async function makeBlock (b, ctx) {
   if (type === 'sub_sub_header') return heading(3, mdText(block.properties?.title, ctx));
   if (type === 'divider') return hr();
   if (type === 'quote') return blockquote([paragraph(mdText(block.properties?.title, ctx))]);
+  if (type === 'page') {
+    await makePage(b);
+    const link = traceParentPath(block, bigIndex, true);
+    const alias = textify(block.value?.properties?.title) || link.replace(/^.*\//, '');
+    return paragraph(wikiLink(link, alias));
+  }
 
   // console.warn(`Unexpected type in makeBlock: ${type} (${id})`);
 }
