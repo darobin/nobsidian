@@ -20,6 +20,8 @@ const bigIndex = await loadJSON(join(dataDir, 'big-index.json'));
 const tree = await loadJSON(join(dataDir, 'tree.json'));
 const schemata = {};
 
+wrapLists();
+
 for (const page of tree.space.pages) {
   await makePage(page);
 }
@@ -262,7 +264,7 @@ function makeFootnote (id, ctx) {
 //  - [ ] "pdf"
 async function makeBlock (b, ctx) {
   const { id, type, content } = b;
-  const block = bigIndex.block[id].value;
+  const block = (/^nob-/.test(type)) ? {} : bigIndex.block[id].value;
   if (type === 'text') {
     const p = paragraph(mdText(block.properties?.title, ctx));
     if (content) {
@@ -282,6 +284,18 @@ async function makeBlock (b, ctx) {
     const link = traceParentPath(block, bigIndex, true);
     const alias = textify(block.value?.properties?.title) || link.replace(/^.*\//, '');
     return paragraph(wikiLink(link, alias));
+  }
+  if (type === 'nob-ul' || type === 'nob-ol') {
+    const children = [];
+    await recurseBlocks(content, children, ctx);
+    return list((type === 'nob-ol'), children);
+  }
+  if (type === 'bulleted_list' || type === 'to_do' || type === 'numbered_list') {
+    const children = [paragraph(mdText(block.properties?.title, ctx))];
+    if (content) await recurseBlocks(content, children, ctx);
+    let checked;
+    if (type === 'to_do') checked = block.properties?.checked?.[0]?.[0] === 'Yes';
+    return listItem(checked , children);
   }
 
   // console.warn(`Unexpected type in makeBlock: ${type} (${id})`);
@@ -392,10 +406,95 @@ function link (url, children) {
   };
 }
 
+function list (ordered, children) {
+  if (!Array.isArray(children)) children = [children];
+  return {
+    type: 'list',
+    ordered,
+    children,
+  };
+}
+
+// checked is true/false if to_do, undefined otherwise
+function listItem (checked, children) {
+  if (!Array.isArray(children)) children = [children];
+  return {
+    type: 'listItem',
+    checked,
+    children,
+  };
+}
+
 function hr () {
   return { type: 'thematicBreak' };
 }
 
 function br () {
   return { type: 'break' };
+}
+
+function wrapLists () {
+  tree.space.pages.forEach(p => {
+        if (p.type === 'copy_indicator') return;
+        if (p.type === 'collection_view_page') {
+          p.collection.views.forEach(v => {
+            v.content.forEach(recurseWrap);
+          });
+        }
+        if (p.type === 'page') recurseWrap(p);
+  });
+}
+
+function recurseWrap (node) {
+  if (!node || !node.content) return;
+  const newKids = [];
+  // XXX this is completely wrong, we need to maintain a stack
+  // no we don't, we're linear per level
+  let curList;
+  let inList;
+  node.content.forEach(kid => {
+    if (kid.id === "16c7b65f-6ca6-4c0d-8140-8c26a63467a1") {
+      console.warn(JSON.stringify(kid, null, 2));
+      console.warn(inList, curList.length, newKids.length);
+    }
+    if (kid.content) kid.content.forEach(recurseWrap);
+    if (inList === 'u') {
+      if (kid.type === 'bulleted_list' || kid.type === 'to_do') return curList.push(kid);
+      // either it's the other kind of list, or it's not and ends the list
+      if (kid.type === 'numbered_list') {
+        inList = 'o';
+        curList = [kid];
+        newKids.push({ type: `nob-ol`, content: curList });
+      }
+      else {
+        inList = false;
+        newKids.push(kid);
+      }
+    }
+    else if (inList === 'o') {
+      if (kid.type === 'numbered_list') return curList.push(kid);
+      if (kid.type === 'bulleted_list' || kid.type === 'to_do') {
+        inList = 'u';
+        curList = [kid];
+        newKids.push({ type: `nob-ul`, content: curList });
+      }
+      else {
+        inList = false;
+        newKids.push(kid);
+      }
+    }
+    // we are not in a list
+    else {
+      if (kid.type !== 'bulleted_list' && kid.type !== 'numbered_list' && kid.type !== 'to_do') {
+        newKids.push(kid);
+        return;
+      }
+      curList = [kid];
+      inList = (kid.type === 'bulleted_list' || kid.type === 'to_do') ? 'u' : 'o';
+      newKids.push({ type: `nob-${inList}l`, content: curList });
+    }
+  });
+  node.content = newKids;
+  // if (node.id === 'b597ce1e-7fea-4fbc-8729-959bf27355a9') console.log(JSON.stringify(node, null, 2));
+  // the header we lose is "16c7b65f-6ca6-4c0d-8140-8c26a63467a1"
 }
