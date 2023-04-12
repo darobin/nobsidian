@@ -230,20 +230,15 @@ function makeFootnote (id, ctx) {
 }
 
 // BLOCK TYPES
-//  - [ ] "bulleted_list", NOTE: when nesting happens, it will be in child nodes. so we can preprocess the tree to group lists first
-//  - [ ] "to_do",
-//  - [ ] "numbered_list",
 //  - [ ] "image",
 //  - [ ] "transclusion_container", NOTE: for these, we should generate the transcluded content in a special file under transclusions/uuid.md (if not already there)
 //  - [ ] "callout",
 //  - [ ] "tweet",
 //  - [ ] "code",
-//  - [ ] "table_of_contents",
 //  - [ ] "transclusion_reference",
 //  - [ ] "alias",
 //  - [ ] "file",
 //  - [ ] "equation",
-//  - [ ] "external_object_instance",
 //  - [ ] "column_list",
 //  - [ ] "column",
 //  - [ ] "video",
@@ -285,6 +280,7 @@ async function makeBlock (b, ctx) {
     if (type === 'to_do') checked = block.properties?.checked?.[0]?.[0] === 'Yes';
     return listItem(checked , children);
   }
+  if (type === 'table_of_contents') return; // we skip
 
   // console.warn(`Unexpected type in makeBlock: ${type} (${id})`);
 }
