@@ -92,19 +92,8 @@ async function makeCollection (c) {
 //    - collections
 //    - pages
 //    - discusssions, these may be attached to a page (and maybe to a block) without being anchored in the text
-// - create index for collections, plus a query for each view
-// - when there is more than one view, process both but keep track of what each view has processed to not do it twice
-// - use the data thing to set data on pages that have a collection as their parent
-// - use mdast (with extensions, matching Obsidian syntax) to produce MD
-// - blocks that have children, when that's not native MD, use a special callout
 // - copy files
 
-// TEXT TYPES
-// * indirection
-//  - [x] "p": internal link [ "‣", [ [ "p", "206e9f49-65c1-4c75-87de-ac2fe661d496", "fb3fbef6-0b34-462f-b235-627e17f7d72d" ] ] ],
-//  - [x] "e": embedded math inline [ "⁍", [ [ "e", "\\mathit{x}" ] ] ]
-//  - [x] "d": date [ "‣", [ [ "d", { "type": "date", "start_date": "2021-08-14" } ] ] ]
-//  - [ ] "eoi": embedded object [ "‣", [ [ "eoi", "c452d50b-02cd-4a43-a51e-269c8fc496c2" ] ] ]
 function mdText (v = [], ctx) {
   // text can contain \n which we should convert to breaks
   let parts = [];
@@ -142,13 +131,12 @@ function mdText (v = [], ctx) {
       if (deco === 'p') {
         const node = bigIndex.block[prm] || bigIndex.collection[prm];
         const link = traceParentPath(node, bigIndex, true);
-        // const alias = link.replace(/^.*\//, '');
         const alias = textify(node.value?.properties?.title || node.value?.name) || link.replace(/^.*\//, '');
         ret = wikiLink(link, (alias || '').replace(/\s+$/, ''));
       }
       if (deco === 'd') return text(prm.start_date);
       if (deco === 'eoi') {
-        const url = bigIndex.block[prm]?.format?.original_url;
+        const url = bigIndex.block[prm]?.value?.format?.original_url;
         if (!url) return;
         ret = link(url, text(url));
       }
