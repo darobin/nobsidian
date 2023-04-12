@@ -144,7 +144,7 @@ function mdText (v = [], ctx) {
         const link = traceParentPath(node, bigIndex, true);
         // const alias = link.replace(/^.*\//, '');
         const alias = textify(node.value?.properties?.title || node.value?.name) || link.replace(/^.*\//, '');
-        ret = wikiLink(link, alias);
+        ret = wikiLink(link, (alias || '').replace(/\s+$/, ''));
       }
       if (deco === 'd') return text(prm.start_date);
       if (deco === 'eoi') {
@@ -448,15 +448,9 @@ function wrapLists () {
 function recurseWrap (node) {
   if (!node || !node.content) return;
   const newKids = [];
-  // XXX this is completely wrong, we need to maintain a stack
-  // no we don't, we're linear per level
   let curList;
   let inList;
   node.content.forEach(kid => {
-    if (kid.id === "16c7b65f-6ca6-4c0d-8140-8c26a63467a1") {
-      console.warn(JSON.stringify(kid, null, 2));
-      console.warn(inList, curList.length, newKids.length);
-    }
     if (kid.content) kid.content.forEach(recurseWrap);
     if (inList === 'u') {
       if (kid.type === 'bulleted_list' || kid.type === 'to_do') return curList.push(kid);
@@ -495,6 +489,4 @@ function recurseWrap (node) {
     }
   });
   node.content = newKids;
-  // if (node.id === 'b597ce1e-7fea-4fbc-8729-959bf27355a9') console.log(JSON.stringify(node, null, 2));
-  // the header we lose is "16c7b65f-6ca6-4c0d-8140-8c26a63467a1"
 }
