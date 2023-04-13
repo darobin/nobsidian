@@ -228,7 +228,6 @@ function makeFootnote (id, ctx) {
 //  - [ ] "image",
 //  - [ ] "file",
 //  - [ ] "pdf"
-//  - [ ] "video",
 //  - [ ] "transclusion_container", NOTE: for these, we should generate the transcluded content in a special file under transclusions/uuid.md (if not already there)
 //  - [ ] "transclusion_reference",
 //  - [ ] "alias",
@@ -288,7 +287,7 @@ async function makeBlock (b, ctx) {
   }
   // note that this wraps in gathered as a workaround for Obsidian/MathJax newline issue
   if (type === 'equation') return math(`\\begin{gathered}\n${block.properties.title[0][0]}\n\\end{gathered}`);
-  if (type === 'tweet') return paragraph(link(block.properties.source));
+  if (type === 'tweet' || type === 'video') return paragraph(link(block.properties.source));
   if (type === 'image') {
     // XXX
     //  - we don't seem to have the cover images for the blogs
@@ -299,7 +298,7 @@ async function makeBlock (b, ctx) {
     // caption is the alt
     // file_ids[0] has the subdir of data/files that has the filename from title and the file
   }
-  if (type === 'pdf') {
+  if (type === 'pdf' || type === 'file') {
     // title is the file name
     // file_ids[0] has the subdir of data/files that has the filename from title and the file
     // copy and link
