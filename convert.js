@@ -230,7 +230,6 @@ function makeFootnote (id, ctx) {
 //  - [ ] "pdf"
 //  - [ ] "transclusion_container", NOTE: for these, we should generate the transcluded content in a special file under transclusions/uuid.md (if not already there)
 //  - [ ] "transclusion_reference",
-//  - [ ] "alias",
 //  - [ ] "column_list",
 //  - [ ] "column",
 //  - [ ] "table",
@@ -270,7 +269,7 @@ async function makeBlock (b, ctx) {
     if (type === 'to_do') checked = block.properties?.checked?.[0]?.[0] === 'Yes';
     return listItem(checked , children);
   }
-  if (type === 'table_of_contents') return; // we skip
+  if (type === 'table_of_contents' || type === 'alias') return; // we skip
   if (type === 'callout') {
     const { page_icon: icon, block_color: color } = block?.format || {};
     const children = [
