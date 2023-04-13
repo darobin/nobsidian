@@ -229,7 +229,6 @@ function makeFootnote (id, ctx) {
 }
 
 // BLOCK TYPES
-//  - [ ] "equation",
 //  - [ ] "tweet",
 //  - [ ] "image",
 //  - [ ] "file",
@@ -292,6 +291,8 @@ async function makeBlock (b, ctx) {
     const lang = block.properties?.language?.[0]?.[0]?.toLowerCase();
     return code(lang === 'Markdown' ? 'md' : lang, value);
   }
+  // note that this wraps in gathered as a workaround for Obsidian/MathJax newline issue
+  if (type === 'equation') return math(`\\begin{gathered}\n${block.properties.title[0][0]}\n\\end{gathered}`);
 
   // console.warn(`Unexpected type in makeBlock: ${type} (${id})`);
 }
@@ -371,6 +372,7 @@ function strike (children) { return typeAndChildren('delete', children); }
 
 function inlineCode (value) { return typeAndValue('inlineCode', value); }
 function inlineMath (value) { return typeAndValue('inlineMath', value); }
+function math (value) { return typeAndValue('math', value); }
 function html (value) { return typeAndValue('html', value); }
 function frontmatter (value) { return typeAndValue('yaml', stringify(value).replace(/\n+$/, '')); }
 
