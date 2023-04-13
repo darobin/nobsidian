@@ -39,7 +39,6 @@ async function makePage (p) {
         .entries(page.properties)
         .map(([k, v]) => {
           if (k === 'title' || !schemata[page.parent_id][k]?.niceName) return false;
-          // XXX we are losing markdown in eg. description (see Valls)
           obj[schemata[page.parent_id][k].niceName] = md(root(mdText(v))).replace(/\n+$/, '');
         })
       ;
@@ -230,21 +229,19 @@ function makeFootnote (id, ctx) {
 }
 
 // BLOCK TYPES
-//  - [ ] "image",
-//  - [ ] "transclusion_container", NOTE: for these, we should generate the transcluded content in a special file under transclusions/uuid.md (if not already there)
-//  - [ ] "callout",
+//  - [ ] "equation",
 //  - [ ] "tweet",
-//  - [ ] "code",
+//  - [ ] "image",
+//  - [ ] "file",
+//  - [ ] "pdf"
+//  - [ ] "video",
+//  - [ ] "transclusion_container", NOTE: for these, we should generate the transcluded content in a special file under transclusions/uuid.md (if not already there)
 //  - [ ] "transclusion_reference",
 //  - [ ] "alias",
-//  - [ ] "file",
-//  - [ ] "equation",
 //  - [ ] "column_list",
 //  - [ ] "column",
-//  - [ ] "video",
 //  - [ ] "table",
 //  - [ ] "table_row",
-//  - [ ] "pdf"
 async function makeBlock (b, ctx) {
   const { id, type, content } = b;
   const block = (/^nob-/.test(type)) ? {} : bigIndex.block[id].value;
@@ -265,7 +262,7 @@ async function makeBlock (b, ctx) {
   if (type === 'page') {
     await makePage(b);
     const link = traceParentPath(block, bigIndex, true);
-    const alias = textify(block.value?.properties?.title) || link.replace(/^.*\//, '');
+    const alias = textify(block.properties?.title) || link.replace(/^.*\//, '');
     return paragraph(wikiLink(link, alias));
   }
   if (type === 'nob-ul' || type === 'nob-ol') {
@@ -281,6 +278,20 @@ async function makeBlock (b, ctx) {
     return listItem(checked , children);
   }
   if (type === 'table_of_contents') return; // we skip
+  if (type === 'callout') {
+    const { page_icon: icon, block_color: color } = block?.format || {};
+    const children = [
+      paragraph(text(`(nobsidianCallout::${icon}) (nobsidianCalloutColour::${color})`)),
+      paragraph(mdText(block.properties?.title, ctx)),
+    ];
+    if (content) await recurseBlocks(content, children, ctx);
+    return blockquote(children);
+  }
+  if (type === 'code') {
+    const value = block.properties?.title?.[0]?.[0];
+    const lang = block.properties?.language?.[0]?.[0]?.toLowerCase();
+    return code(lang === 'Markdown' ? 'md' : lang, value);
+  }
 
   // console.warn(`Unexpected type in makeBlock: ${type} (${id})`);
 }
