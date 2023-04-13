@@ -57,10 +57,10 @@ async function makePage (p) {
 }
 
 async function makeCollection (c) {
-  const { id, path, views } = c;
+  const { id, path, views, name } = c;
   await mkdir(join(obsidianVault, path), { recursive: true });
-  // we ignore the title because Obsidian uses the file name for that
   const ast = root();
+  ast.children.push(heading(1, text(name)));
   const { schema } = bigIndex.collection[id].value;
   schemata[id] = schema;
   Object.values(schema).forEach(v => {
@@ -73,7 +73,7 @@ async function makeCollection (c) {
     const props = (view.format?.table_properties || view.format?.list_properties)?.filter(({ visible, property }) => visible && property !== 'title').map(({ property }) => schema[property].niceName);
     if (props) ast.children.push(code('dataview', `${isTable ? `TABLE ${props.join(', ')}` : 'LIST'}\nFROM "${path.replace(/\/$/, '')}"\n`));
   });
-  await writeFile(join(obsidianVault, path, '_.md'), md(ast));
+  await writeFile(join(obsidianVault, path.replace(/\/$/, '') + '.md'), md(ast));
   // now recurse
   const seenHere = new Set();
   for (const v of views) {
@@ -88,7 +88,6 @@ async function makeCollection (c) {
 
 // XXX
 // - walk:
-//    - collections
 //    - pages
 //    - discusssions, these may be attached to a page (and maybe to a block) without being anchored in the text
 // - copy files
@@ -355,6 +354,7 @@ function md (ast, id) {
 
 function heading (depth, children) {
   if (typeof children === 'string') children = [text(children)];
+  if (!Array.isArray(children)) children = [children];
   return {
     type: 'heading',
     depth,
