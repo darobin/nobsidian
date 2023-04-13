@@ -200,10 +200,6 @@ function mdText (v = [], ctx) {
   return ret;
 }
 
-function text (value) {
-  return { type: 'text', value };
-}
-
 function makeFootnote (id, ctx) {
   ctx.fnCount++;
   const disc = bigIndex.discussion[id]?.value;
@@ -293,6 +289,7 @@ async function makeBlock (b, ctx) {
   }
   // note that this wraps in gathered as a workaround for Obsidian/MathJax newline issue
   if (type === 'equation') return math(`\\begin{gathered}\n${block.properties.title[0][0]}\n\\end{gathered}`);
+  if (type === 'tweet') return paragraph(link(block.properties.source));
 
   // console.warn(`Unexpected type in makeBlock: ${type} (${id})`);
 }
@@ -370,6 +367,7 @@ function em (children) { return typeAndChildren('emphasis', children); }
 function strong (children) { return typeAndChildren('strong', children); }
 function strike (children) { return typeAndChildren('delete', children); }
 
+function text (value) { return typeAndValue('text', value); }
 function inlineCode (value) { return typeAndValue('inlineCode', value); }
 function inlineMath (value) { return typeAndValue('inlineMath', value); }
 function math (value) { return typeAndValue('math', value); }
@@ -395,6 +393,7 @@ function code (lang, value) {
 }
 
 function link (url, children) {
+  if (!children) children = [text(url)];
   if (!Array.isArray(children)) children = [children];
   return {
     type: 'link',
