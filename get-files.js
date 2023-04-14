@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { join } from 'node:path';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, writeFile, readdir } from 'node:fs/promises';
 import { NotionAPI } from 'notion-client';
 import axios from 'axios';
 import { getNotionToken, getNotionFileToken } from "./lib/tokens.js";
@@ -16,6 +16,15 @@ const dataDir = rel('data');
 const filesDir = join(dataDir, 'files');
 await mkdir(filesDir, { recursive: true });
 
+const uuids = await readdir(filesDir);
+const alreadyHave = new Set();
+for (const uuid of uuids) {
+  const { parent } = await loadJSON(join(filesDir, uuid, 'parent.json'));
+  if (Array.isArray(parent)) parent.forEach(p => alreadyHave.add(p));
+  else alreadyHave.add(parent);
+  alreadyHave.add(uuid);
+}
+
 const authToken = await getNotionToken();
 if (!authToken) die('No token set. First, you need to run: ./set-notion-token.js <token>.');
 const fileToken = await getNotionFileToken();
@@ -26,6 +35,7 @@ const bigIndex = await loadJSON(join(dataDir, 'big-index.json'));
 const { signed_urls: urls } = bigIndex;
 const permRequests = Object.keys(urls)
   .map(id => {
+    if (alreadyHave.has(id)) return;
     const url = bigIndex.block[id]?.value?.properties?.source?.[0]?.[0];
     return {
       permissionRecord: {
@@ -37,12 +47,15 @@ const permRequests = Object.keys(urls)
   })
   .filter(Boolean)
 ;
+if (!permRequests.length) die('Nothing to download');
+console.warn(JSON.stringify(permRequests));
 const { signedUrls } = await nc.getSignedFileUrls(permRequests);
 console.warn(signedUrls);
 
 if (signedUrls.length !== permRequests.length) die(`Wrong number of signed URLs: ${signedUrls.length} vs ${permRequests.length}`);
 
 let cnt = 0;
+const parentMap = {};
 for (const url of signedUrls) {
   const { id: parent } = permRequests[cnt].permissionRecord;
   cnt++;
@@ -50,7 +63,12 @@ for (const url of signedUrls) {
   const dir = join(filesDir, uuid);
   console.warn(`  . ${dir} -> ${fn} (for ${parent})`);
   await mkdir(dir, { recursive: true });
-  await saveJSON(join(dir, 'parent.json'), { parent });
+  if (parentMap[uuid]) {
+    if (Array.isArray(parentMap[uuid])) parentMap[uuid].push(parent);
+    else parentMap[uuid] = [parentMap[uuid], parent];
+  }
+  else parentMap[uuid] = parent;
+  await saveJSON(join(dir, 'parent.json'), { parent: parentMap[uuid] });
   console.warn(`Downloading ${url}`);
   try {
     const res = await axios.get(url, { responseType: 'arraybuffer', headers: { Cookie: `file_token=${fileToken}` } });
