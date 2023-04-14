@@ -38,16 +38,15 @@ async function makePage (p) {
     if (page.parent_table === 'collection' && page.properties && schemata[page.parent_id]) {
       const obj = {};
       for (const [k, v] of Object.entries(page.properties)) {
-        if (k === 'title' || !schemata[page.parent_id][k]?.niceName) return false;
+        if (k === 'title' || !schemata[page.parent_id][k]?.niceName) continue;
         if (schemata[page.parent_id][k].type === 'file') {
-          // we just create a link to the image
-          const fn = v[0]?.[0];
+          const fn = v[0]?.[1]?.[0]?.[1]?.replace(/.*\//, '');
           if (fn) {
             const imgPath = await copyFile(page.file_ids, fn, pagePath);
-            obj[schemata[page.parent_id][k].niceName] = image(imgPath);
+            obj[schemata[page.parent_id][k].niceName] = inlineMD(image(imgPath));
           }
         }
-        obj[schemata[page.parent_id][k].niceName] = md(root(mdText(v))).replace(/\n+$/, '');
+        else obj[schemata[page.parent_id][k].niceName] = inlineMD(mdText(v));
       }
       ast.children.push(frontmatter(obj));
     }
@@ -372,6 +371,10 @@ function md (ast, id) {
     console.log(JSON.stringify(ast, null, 2));
     console.error(err);
   }
+}
+
+function inlineMD (ast) {
+  return md(root(ast)).replace(/\n+$/, '');
 }
 
 function heading (depth, children) {
