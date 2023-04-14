@@ -1,6 +1,6 @@
 
 import { join, dirname } from 'node:path';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, writeFile, copyFile as cp } from 'node:fs/promises';
 import { toMarkdown } from 'mdast-util-to-markdown';
 import { frontmatterToMarkdown } from 'mdast-util-frontmatter';
 import { gfmToMarkdown } from 'mdast-util-gfm';
@@ -14,6 +14,7 @@ import loadJSON from './lib/load-json.js';
 
 const rel = makeRel(import.meta.url);
 const dataDir = rel('data');
+const filesDir = join(dataDir, 'files');
 const obsidianVault = '/Users/robin/Code/darobin/static-notion-export/Static Notion Import';
 
 const bigIndex = await loadJSON(join(dataDir, 'big-index.json'));
@@ -33,22 +34,27 @@ async function makePage (p) {
   if (type === 'page') {
     const ast = root();
     const page = bigIndex.block[id].value;
+    const pagePath = join(obsidianVault, p.path);
     if (page.parent_table === 'collection' && page.properties && schemata[page.parent_id]) {
       const obj = {};
-      Object
-        .entries(page.properties)
-        .map(([k, v]) => {
-          if (k === 'title' || !schemata[page.parent_id][k]?.niceName) return false;
-          obj[schemata[page.parent_id][k].niceName] = md(root(mdText(v))).replace(/\n+$/, '');
-        })
-      ;
+      for (const [k, v] of Object.entries(page.properties)) {
+        if (k === 'title' || !schemata[page.parent_id][k]?.niceName) return false;
+        if (schemata[page.parent_id][k].type === 'file') {
+          // we just create a link to the image
+          const fn = v[0]?.[0];
+          if (fn) {
+            const imgPath = await copyFile(page.file_ids, fn, pagePath);
+            obj[schemata[page.parent_id][k].niceName] = image(imgPath);
+          }
+        }
+        obj[schemata[page.parent_id][k].niceName] = md(root(mdText(v))).replace(/\n+$/, '');
+      }
       ast.children.push(frontmatter(obj));
     }
     const ctx = { fnCount: 0, footnotes: [] };
     ast.children.push(heading(1, mdText(page.properties?.title || page.name, ctx)));
     await recurseBlocks(content, ast.children, ctx);
     if (ctx.fnCount) ast.children.push(...ctx.footnotes);
-    const pagePath = join(obsidianVault, p.path);
     await mkdir(dirname(pagePath), { recursive: true });
     await writeFile(pagePath, md(ast, id));
     return;
@@ -288,14 +294,10 @@ async function makeBlock (b, ctx) {
   if (type === 'tweet' || type === 'video') return paragraph(link(block.properties.source));
   if (type === 'image') {
     // XXX
-    //  - we don't seem to have the cover images for the blogs
-    //  - those are in file_ids that are on pages, not images
-    //  - we may need to scan for more file_ids and apply the download process again
-    //  - also, we need to look at what block types have file_ids to make sure we have them all (page at least)
-    //  - need to fix images in frontmatter too
+    //  - need to fix images in frontmatter
     // title is the file name
     // caption is the alt
-    // file_ids[0] has the subdir of data/files that has the filename from title and the file
+    // file_ids[...] has the subdir of data/files that has the filename from title and the file
   }
   if (type === 'pdf' || type === 'file') {
     // title is the file name
@@ -304,6 +306,25 @@ async function makeBlock (b, ctx) {
   }
 
   // console.warn(`Unexpected type in makeBlock: ${type} (${id})`);
+}
+
+// we have multiple ids because sometimes there are several, just because — need to find the right one
+async function copyFile (ids, fn, parentPath) {
+  const targetDir = parentPath.replace(/\.md$/, '');
+  await mkdir(targetDir, { recursive: true });
+  const relDir = targetDir.replace(/^.*\//, '');
+  const filePath = join(relDir, fn)
+
+  let hasCopied = false;
+  for (const id of ids) {
+    try {
+      await cp(join(filesDir, id, fn), join(targetDir, fn));
+      hasCopied = true;
+    }
+    catch (err) {/**/}
+  }
+  if (!hasCopied) console.warn(`Failed to copy ${fn} for ${ids.join(',')} in ${parentPath}`);
+  return filePath;
 }
 
 async function recurseBlocks (content, parentChildren, ctx) {
@@ -440,6 +461,15 @@ function hr () {
 
 function br () {
   return { type: 'break' };
+}
+
+function image (url, alt, title) {
+  return {
+    type: 'image',
+    url,
+    alt,
+    title,
+  };
 }
 
 function wrapLists () {
