@@ -50,7 +50,7 @@ async function makePage (p) {
       }
       ast.children.push(frontmatter(obj));
     }
-    const ctx = { fnCount: 0, footnotes: [] };
+    const ctx = { fnCount: 0, footnotes: [], pagePath };
     ast.children.push(heading(1, mdText(page.properties?.title || page.name, ctx)));
     await recurseBlocks(content, ast.children, ctx);
     if (ctx.fnCount) ast.children.push(...ctx.footnotes);
@@ -229,9 +229,6 @@ function makeFootnote (id, ctx) {
 }
 
 // BLOCK TYPES
-//  - [ ] "image",
-//  - [ ] "file",
-//  - [ ] "pdf"
 //  - [ ] "transclusion_container", NOTE: for these, we should generate the transcluded content in a special file under transclusions/uuid.md (if not already there)
 //  - [ ] "transclusion_reference",
 //  - [ ] "column_list",
@@ -292,16 +289,23 @@ async function makeBlock (b, ctx) {
   if (type === 'equation') return math(`\\begin{gathered}\n${block.properties.title[0][0]}\n\\end{gathered}`);
   if (type === 'tweet' || type === 'video') return paragraph(link(block.properties.source));
   if (type === 'image') {
-    // XXX
-    //  - need to fix images in frontmatter
-    // title is the file name
-    // caption is the alt
-    // file_ids[...] has the subdir of data/files that has the filename from title and the file
+    const alt = textify(block.properties.caption);
+    let imgPath;
+    if (block.file_ids) {
+      const fn = textify(block.properties.source).replace(/.*\//, '');
+      if (!block.file_ids) console.warn(`No file_ids in ${id}`);
+      imgPath = await copyFile(block.file_ids, fn, ctx.pagePath);
+    }
+    else {
+      imgPath = textify(block.properties.source);
+    }
+    return paragraph(image(imgPath, alt));
   }
   if (type === 'pdf' || type === 'file') {
-    // title is the file name
-    // file_ids[0] has the subdir of data/files that has the filename from title and the file
-    // copy and link
+      const fn = textify(block.properties.source).replace(/.*\//, '');
+      const title = textify(block.properties.title) || fn;
+      const filePath = await copyFile(block.file_ids, fn, ctx.pagePath);
+      return paragraph(link(filePath, text(title)));
   }
 
   // console.warn(`Unexpected type in makeBlock: ${type} (${id})`);
@@ -350,20 +354,22 @@ function niceName (str) {
 function md (ast, id) {
   try {
     return toMarkdown(ast, {
-      bullet: '-',
-      listItemIndent: 'one',
-      resourceLink: true,
-      rule: '-',
-      extensions: [
-        frontmatterToMarkdown(['yaml']),
-        gfmToMarkdown(),
-        mathToMarkdown(),
-        wikiToMarkdown({ aliasDivider: '|' }),
-      ],
-    })
-    // we remove a number of escapes, here trailing spaces
-    .replaceAll('&#x20;', ' ')
-    .replace(/(\[\[.+?\]\])/g, (_, m) => m.replace(/\\_/g, '_'))
+        bullet: '-',
+        listItemIndent: 'one',
+        resourceLink: true,
+        rule: '-',
+        extensions: [
+          frontmatterToMarkdown(['yaml']),
+          gfmToMarkdown(),
+          mathToMarkdown(),
+          wikiToMarkdown({ aliasDivider: '|' }),
+        ],
+      })
+      // we remove a number of escapes, here trailing spaces
+      .replaceAll('&#x20;', ' ')
+      .replace(/(\[\[.+?\]\])/g, (_, m) => m.replace(/\\_/g, '_'))
+      .replaceAll('\\#resolved', '#resolved')
+      // .replace(/^---# /gm, '---\n\n# ')
     ;
   }
   catch (err) {
