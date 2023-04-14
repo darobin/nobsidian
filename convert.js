@@ -292,6 +292,7 @@ async function makeBlock (b, ctx) {
     //  - those are in file_ids that are on pages, not images
     //  - we may need to scan for more file_ids and apply the download process again
     //  - also, we need to look at what block types have file_ids to make sure we have them all (page at least)
+    //  - need to fix images in frontmatter too
     // title is the file name
     // caption is the alt
     // file_ids[0] has the subdir of data/files that has the filename from title and the file

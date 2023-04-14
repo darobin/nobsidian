@@ -11,6 +11,8 @@ import loadJSON from './lib/load-json.js';
 import saveJSON from './lib/save-json.js';
 import sleep from './lib/sleep.js';
 
+const spaceId = 'fb3fbef6-0b34-462f-b235-627e17f7d72d';
+
 const rel = makeRel(import.meta.url);
 const dataDir = rel('data');
 const filesDir = join(dataDir, 'files');
@@ -47,8 +49,32 @@ const permRequests = Object.keys(urls)
   })
   .filter(Boolean)
 ;
+// XXX
+//  - iterating on blocks, for image we have:
+//    - file_ids = the uuid in the URL
+//    - id = the parent, key in the signed_urls
+Object.values(bigIndex.block)
+  .map(v => v.value)
+  .filter(b => b.space_id === spaceId)
+  .filter(b => b.file_ids)
+  .filter(b => !bigIndex.signed_urls[b.id])
+  .forEach(b => {
+    const id = b.id;
+    let url = b.properties?.['WR=k']?.[0]?.[1]?.[0]?.[1]
+            || b.format?.page_cover
+    ;
+    if (!url) return;
+    permRequests.push({
+      permissionRecord: {
+        table: 'block',
+        id,
+      },
+      url,
+    });
+  })
+;
+
 if (!permRequests.length) die('Nothing to download');
-console.warn(JSON.stringify(permRequests));
 const { signedUrls } = await nc.getSignedFileUrls(permRequests);
 console.warn(signedUrls);
 
