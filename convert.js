@@ -47,6 +47,10 @@ async function makePage (p, parentCtx) {
             obj[schemata[page.parent_id][k].niceName] = inlineMD(image(imgPath));
           }
         }
+        else if (schemata[page.parent_id][k].type === 'checkbox') {
+          const checked = v?.[0]?.[0] === 'Yes';
+          obj[schemata[page.parent_id][k].niceName] = checked ? '✅' : '❌';
+        }
         else obj[schemata[page.parent_id][k].niceName] = inlineMD(mdText(v));
       }
       ast.children.push(frontmatter(obj));
@@ -365,11 +369,12 @@ async function makeBlock (b, ctx) {
   }
   if (type === 'collection_view') {
     const { id, path, views, name } = b.collection;
-    await recurseViews(views);
-    return [
+    const ret = [
       heading(3, text(name)),
       ...getCollectionAST(id, views, path),
     ];
+    await recurseViews(views);
+    return ret;
   }
   // if (type === 'collection_view_page') return;
 
