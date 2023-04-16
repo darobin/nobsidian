@@ -16,6 +16,7 @@ const rel = makeRel(import.meta.url);
 const dataDir = rel('data');
 const filesDir = join(dataDir, 'files');
 const obsidianVault = '/Users/robin/Code/darobin/static-notion-export/Static Notion Import';
+const transclusionRoot = 'transclusions';
 
 const bigIndex = await loadJSON(join(dataDir, 'big-index.json'));
 const tree = await loadJSON(join(dataDir, 'tree.json'));
@@ -27,7 +28,7 @@ for (const page of tree.space.pages) {
   await makePage(page);
 }
 
-async function makePage (p) {
+async function makePage (p, parentCtx) {
   const { id, type, content } = p;
   if (type === 'copy_indicator') return;
   if (type === 'collection_view_page' || type === 'collection_view') return await makeCollection(p.collection);
@@ -56,6 +57,19 @@ async function makePage (p) {
     if (ctx.fnCount) ast.children.push(...ctx.footnotes);
     await mkdir(dirname(pagePath), { recursive: true });
     await writeFile(pagePath, md(ast, id));
+    return;
+  }
+  if (type === 'transclusion_container') {
+    const ast = root();
+    const tcPath = join(obsidianVault, `${transclusionRoot}/${id}.md`);
+    const ctx = { fnCount: 0, footnotes: [], pagePath: tcPath };
+    await recurseBlocks(content, ast.children, ctx);
+    if (ctx.fnCount) {
+      parentCtx.fnCount += ctx.fnCount;
+      parentCtx.footnotes.push(...ctx.footnotes);
+    }
+    await mkdir(dirname(tcPath), { recursive: true });
+    await writeFile(tcPath, md(ast, id));
     return;
   }
   console.warn(`Unexpected type in makePage: ${type} (${id})`);
@@ -229,8 +243,6 @@ function makeFootnote (id, ctx) {
 }
 
 // BLOCK TYPES
-//  - [ ] "transclusion_container", NOTE: for these, we should generate the transcluded content in a special file under transclusions/uuid.md (if not already there)
-//  - [ ] "transclusion_reference",
 //  - [ ] "column_list",
 //  - [ ] "column",
 //  - [ ] "table",
@@ -307,6 +319,17 @@ async function makeBlock (b, ctx) {
       const filePath = await copyFile(block.file_ids, fn, ctx.pagePath);
       return paragraph(link(filePath, text(title)));
   }
+  // take the content and put it under transclusion/id.md
+  if (type === 'transclusion_container') {
+    await makePage(b, ctx);
+    return paragraph([text('!'), wikiLink(`${transclusionRoot}/${id}`)]);
+
+  }
+  if (type === 'transclusion_reference') {
+    const ref = block.format?.transclusion_reference_pointer?.id;
+    if (!ref) console.warn(`No reference in transclusion.`);
+    return paragraph([text('!'), wikiLink(`${transclusionRoot}/${ref}`)]);
+  }
 
   // console.warn(`Unexpected type in makeBlock: ${type} (${id})`);
 }
@@ -369,6 +392,7 @@ function md (ast, id) {
       .replaceAll('&#x20;', ' ')
       .replace(/(\[\[.+?\]\])/g, (_, m) => m.replace(/\\_/g, '_'))
       .replaceAll('\\#resolved', '#resolved')
+      .replaceAll(`\\![[${transclusionRoot}`, `![[${transclusionRoot}`)
       // .replace(/^---# /gm, '---\n\n# ')
     ;
   }
