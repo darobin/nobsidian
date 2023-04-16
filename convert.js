@@ -376,8 +376,10 @@ async function makeBlock (b, ctx) {
     await recurseViews(views);
     return ret;
   }
-  // if (type === 'collection_view_page') return;
-
+  // XXX
+  // - for this, need to create a collection page as if it were a subpage
+  //    if (type === 'collection_view_page') return;
+  // - Project/Personal: Betterment and Nice Feedback both have trailing space
 
   console.warn(`Unexpected type in makeBlock: ${type} (${id})`);
 }
