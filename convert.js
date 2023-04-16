@@ -245,8 +245,6 @@ function makeFootnote (id, ctx) {
 // BLOCK TYPES
 //  - [ ] "column_list",
 //  - [ ] "column",
-//  - [ ] "table",
-//  - [ ] "table_row",
 async function makeBlock (b, ctx) {
   const { id, type, content } = b;
   const block = (/^nob-/.test(type)) ? {} : bigIndex.block[id].value;
@@ -330,8 +328,23 @@ async function makeBlock (b, ctx) {
     if (!ref) console.warn(`No reference in transclusion.`);
     return paragraph([text('!'), wikiLink(`${transclusionRoot}/${ref}`)]);
   }
-
-  // console.warn(`Unexpected type in makeBlock: ${type} (${id})`);
+  if (type === 'table') {
+    const cols = block.format.table_block_column_order;
+    const hasHeader = !!block.format.table_block_column_header;
+    const rows = [];
+    // MD tables have a header row by default, so if we don't expect a header we add an empty line
+    if (!hasHeader) rows.push(row(cols.map(() => cell(text('')))));
+    content.forEach(({ id: rid }) => {
+      const rowProps = bigIndex.block[rid].value.properties;
+      rows.push(row(cols.map(col => {
+        return cell(
+          rowProps[col] ? mdText(rowProps[col]) : text(' ')
+        );
+      })));
+    });
+    return table(rows);
+  }
+  console.warn(`Unexpected type in makeBlock: ${type} (${id})`);
 }
 
 // we have multiple ids because sometimes there are several, just because — need to find the right one
@@ -433,6 +446,9 @@ function blockquote (children) { return typeAndChildren('blockquote', children);
 function em (children) { return typeAndChildren('emphasis', children); }
 function strong (children) { return typeAndChildren('strong', children); }
 function strike (children) { return typeAndChildren('delete', children); }
+function table (children) { return typeAndChildren('table', children); }
+function row (children) { return typeAndChildren('tableRow', children); }
+function cell (children) { return typeAndChildren('tableCell', children); }
 
 function text (value) { return typeAndValue('text', value); }
 function inlineCode (value) { return typeAndValue('inlineCode', value); }
