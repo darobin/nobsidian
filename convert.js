@@ -242,9 +242,6 @@ function makeFootnote (id, ctx) {
   };
 }
 
-// BLOCK TYPES
-//  - [ ] "column_list",
-//  - [ ] "column",
 async function makeBlock (b, ctx) {
   const { id, type, content } = b;
   const block = (/^nob-/.test(type)) ? {} : bigIndex.block[id].value;
@@ -343,6 +340,17 @@ async function makeBlock (b, ctx) {
       })));
     });
     return table(rows);
+  }
+  if (type === 'table_row') return;
+  if (type === 'column') return;
+  if (type === 'column_list') {
+    const columns = [];
+    for (const col of content) {
+      const td = cell([]);
+      await recurseBlocks(col.content, td.children, ctx);
+      columns.push(td);
+    }
+    return table(row(columns));
   }
   console.warn(`Unexpected type in makeBlock: ${type} (${id})`);
 }
