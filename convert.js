@@ -53,6 +53,9 @@ async function makePage (p, parentCtx) {
     }
     const ctx = { fnCount: 0, footnotes: [], pagePath };
     ast.children.push(heading(1, mdText(page.properties?.title || page.name, ctx)));
+    if (page.discussions) {
+      ast.children.push(paragraph(page.discussions.map(did => makeFootnote(did, ctx))));
+    }
     await recurseBlocks(content, ast.children, ctx);
     if (ctx.fnCount) ast.children.push(...ctx.footnotes);
     await mkdir(dirname(pagePath), { recursive: true });
@@ -80,6 +83,14 @@ async function makeCollection (c) {
   await mkdir(join(obsidianVault, path), { recursive: true });
   const ast = root();
   ast.children.push(heading(1, text(name)));
+  ast.children.push(...getCollectionAST(id, views, path));
+  await writeFile(join(obsidianVault, path.replace(/\/$/, '') + '.md'), md(ast));
+  // now recurse
+  await recurseViews(views);
+}
+
+function getCollectionAST (id, views, path) {
+  const children = [];
   const { schema } = bigIndex.collection[id].value;
   schemata[id] = schema;
   Object.values(schema).forEach(v => {
@@ -87,29 +98,29 @@ async function makeCollection (c) {
   });
   views.forEach(v => {
     const view = bigIndex.collection_view[v.id].value;
-    if (view.name) ast.children.push(heading(2, view.name));
+    if (view.name) children.push(heading(2, view.name));
     const isTable = !!view.format?.table_properties;
     const props = (view.format?.table_properties || view.format?.list_properties)?.filter(({ visible, property }) => visible && property !== 'title').map(({ property }) => schema[property].niceName);
-    if (props) ast.children.push(code('dataview', `${isTable ? `TABLE ${props.join(', ')}` : 'LIST'}\nFROM "${path.replace(/\/$/, '')}"\n`));
+    if (props) children.push(code('dataview', `${isTable ? `TABLE ${props.join(', ')}` : 'LIST'}\nFROM "${path.replace(/\/$/, '')}"\n`));
   });
-  await writeFile(join(obsidianVault, path.replace(/\/$/, '') + '.md'), md(ast));
-  // now recurse
+  return children;
+}
+
+async function recurseViews (views) {
   const seenHere = new Set();
   for (const v of views) {
-    for (const item of v.content) {
-      if (seenHere.has(item.id)) continue;
-      seenHere.add(item.id);
-      await makePage(item);
+    if (v.content) {
+      for (const item of v.content) {
+        if (seenHere.has(item.id)) continue;
+        seenHere.add(item.id);
+        await makePage(item);
+      }
     }
   }
 }
 
-
 // XXX
-// - walk:
-//    - pages
-//    - discusssions, these may be attached to a page (and maybe to a block) without being anchored in the text
-// - copy files
+// - missing some embedded tables… See Projects/Rewilding
 
 function mdText (v = [], ctx) {
   // text can contain \n which we should convert to breaks
@@ -352,6 +363,17 @@ async function makeBlock (b, ctx) {
     }
     return table(row(columns));
   }
+  if (type === 'collection_view') {
+    const { id, path, views, name } = b.collection;
+    await recurseViews(views);
+    return [
+      heading(3, text(name)),
+      ...getCollectionAST(id, views, path),
+    ];
+  }
+  // if (type === 'collection_view_page') return;
+
+
   console.warn(`Unexpected type in makeBlock: ${type} (${id})`);
 }
 
@@ -390,7 +412,7 @@ async function recurseBlocks (content, parentChildren, ctx) {
 //  - [ ] use https://github.com/FlorianWoelki/obsidian-icon-folder to add icons manually
 
 function niceName (str) {
-  const ret = str.toLowerCase().replace(/\s+(\w)/g, (_,c) => c.toUpperCase());
+  const ret = str.toLowerCase().replace(/\s+(\w)/g, (_,c) => c.toUpperCase()).replace(/[?]/g, '');
   if (ret === 'lastModified' || ret === 'lastEditedTime') return 'file.ctime';
   return ret;
 }
