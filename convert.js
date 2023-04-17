@@ -19,7 +19,7 @@ const obsidianVault = '/Users/robin/Code/darobin/static-notion-export/Static Not
 const transclusionRoot = 'transclusions';
 
 const bigIndex = await loadJSON(join(dataDir, 'big-index.json'));
-const tree = await loadJSON(join(dataDir, 'tree.json'));
+const tree = fixTree(await loadJSON(join(dataDir, 'tree.json')));
 const schemata = {};
 
 wrapLists();
@@ -123,8 +123,6 @@ async function recurseViews (views) {
   }
 }
 
-// XXX
-// - missing some embedded tables… See Projects/Rewilding
 
 function mdText (v = [], ctx) {
   // text can contain \n which we should convert to breaks
@@ -164,7 +162,7 @@ function mdText (v = [], ctx) {
         const node = bigIndex.block[prm] || bigIndex.collection[prm];
         const link = traceParentPath(node, bigIndex, true);
         const alias = textify(node.value?.properties?.title || node.value?.name) || link.replace(/^.*\//, '');
-        ret = wikiLink(link, (alias || '').replace(/\s+$/, ''));
+        ret = wikiLink(link, alias);
       }
       if (deco === 'd') return text(prm.start_date);
       if (deco === 'eoi') {
@@ -280,6 +278,13 @@ async function makeBlock (b, ctx) {
     const alias = textify(block.properties?.title) || link.replace(/^.*\//, '');
     return paragraph(wikiLink(link, alias));
   }
+  if (type === 'collection_view_page') {
+    const c = b.collection;
+    await makeCollection(c);
+    const link = c.path.replace(/\/$/, '');
+    const alias = c.name || link;
+    return paragraph(wikiLink(link, alias));
+  }
   if (type === 'nob-ul' || type === 'nob-ol') {
     const children = [];
     await recurseBlocks(content, children, ctx);
@@ -376,11 +381,6 @@ async function makeBlock (b, ctx) {
     await recurseViews(views);
     return ret;
   }
-  // XXX
-  // - for this, need to create a collection page as if it were a subpage
-  //    if (type === 'collection_view_page') return;
-  // - Project/Personal: Betterment and Nice Feedback both have trailing space
-
   console.warn(`Unexpected type in makeBlock: ${type} (${id})`);
 }
 
@@ -495,6 +495,7 @@ function html (value) { return typeAndValue('html', value); }
 function frontmatter (value) { return typeAndValue('yaml', stringify(value).replace(/\n+$/, '')); }
 
 function wikiLink (value, alias) {
+  if (alias) alias = alias.replace(/\s+$/, '');
   return {
     type: 'wikiLink',
     value,
@@ -568,6 +569,19 @@ function wrapLists () {
         }
         if (p.type === 'page') recurseWrap(p);
   });
+}
+
+function fixTree (src) {
+  return JSON.parse(
+    JSON.stringify(
+      src,
+      (k, v) => {
+        if (k === 'title') return v.replace(/\s+$/, '');
+        if (k === 'path') return v.replace(/\s+\.md$/, '.md');
+        return v;
+      }
+    )
+  );
 }
 
 function recurseWrap (node) {
