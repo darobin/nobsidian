@@ -89,7 +89,6 @@ async function makeCollection (c) {
   ast.children.push(heading(1, text(name)));
   ast.children.push(...getCollectionAST(id, views, path));
   await writeFile(join(obsidianVault, path.replace(/\/$/, '') + '.md'), md(ast));
-  // now recurse
   await recurseViews(views);
 }
 
@@ -410,14 +409,6 @@ async function recurseBlocks (content, parentChildren, ctx) {
   }
 }
 
-// things to do
-//  - [ ] some of the directories are tables: how can we make these files instead with the special data thing in Obsidian
-//  - [ ] check that BHK Interpretation is correct
-//  - [ ] pin tweets
-//  - [ ] check that we know how to convert every block type and every kind of text
-//  - [ ] table_block_* fields are important for table blocks
-//  - [ ] use https://github.com/FlorianWoelki/obsidian-icon-folder to add icons manually
-
 function niceName (str) {
   const ret = str.toLowerCase().replace(/\s+(\w)/g, (_,c) => c.toUpperCase()).replace(/[?]/g, '');
   if (ret === 'lastModified' || ret === 'lastEditedTime') return 'file.ctime';
@@ -443,7 +434,6 @@ function md (ast, id) {
       .replace(/(\[\[.+?\]\])/g, (_, m) => m.replace(/\\_/g, '_'))
       .replaceAll('\\#resolved', '#resolved')
       .replaceAll(`\\![[${transclusionRoot}`, `![[${transclusionRoot}`)
-      // .replace(/^---# /gm, '---\n\n# ')
     ;
   }
   catch (err) {
